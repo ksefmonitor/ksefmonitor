@@ -24,6 +24,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  deleteAppDataOnUninstall: true
 publish:
   provider: github
   owner: ksefmonitor

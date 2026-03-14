@@ -386,7 +386,7 @@ export class KsefApiClient {
       let lastError: Error | null = null
       privateKey = null as any
 
-      // Try with passphrase first (for encrypted keys), then without
+      // Try Node.js crypto first
       const attempts: any[] = [
         { key: keyBuf, passphrase: pass },
         { key: keyBuf, format: 'pem', passphrase: pass },
@@ -398,15 +398,38 @@ export class KsefApiClient {
       for (const opts of attempts) {
         try {
           privateKey = crypto.createPrivateKey(opts)
-          this.log.info('Key loaded successfully with options: ' + JSON.stringify({ ...opts, key: '[buffer]', passphrase: opts.passphrase ? '[set]' : undefined }))
+          this.log.info('Key loaded successfully via crypto API')
           break
         } catch (e: any) {
           lastError = e
         }
       }
+
+      // Fallback: use openssl CLI to decrypt the key (BoringSSL in Electron may not support all PBE algorithms)
+      if (!privateKey) {
+        this.log.warn('crypto API failed, trying openssl CLI fallback...')
+        try {
+          const { execSync } = require('child_process')
+          const tmpIn = require('path').join(require('os').tmpdir(), 'ksef_key_in.pem')
+          const tmpOut = require('path').join(require('os').tmpdir(), 'ksef_key_out.pem')
+          fs.writeFileSync(tmpIn, keyBuf)
+          try {
+            execSync(`openssl pkey -in "${tmpIn}" -out "${tmpOut}" -passin pass:${pass || ''}`, { stdio: 'pipe' })
+            const decryptedPem = fs.readFileSync(tmpOut, 'utf-8')
+            privateKey = crypto.createPrivateKey(decryptedPem)
+            this.log.info('Key loaded successfully via openssl CLI')
+          } finally {
+            try { fs.unlinkSync(tmpIn) } catch {}
+            try { fs.unlinkSync(tmpOut) } catch {}
+          }
+        } catch (e: any) {
+          this.log.error('OpenSSL fallback also failed: ' + e.message)
+        }
+      }
+
       if (!privateKey) {
         this.log.error('All key loading attempts failed. Last error: ' + lastError?.message)
-        throw lastError || new Error('Nie udało się odczytać klucza prywatnego')
+        throw lastError || new Error('Nie udało się odczytać klucza prywatnego. Sprawdź hasło i format klucza.')
       }
 
       const decryptedKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
