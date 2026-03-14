@@ -1,51 +1,98 @@
 import { net } from 'electron'
+import * as crypto from 'crypto'
 import type {
   AppConfig,
   InvoiceQueryFilters,
   QueryInvoicesMetadataResponse
 } from '../shared/types'
 
+interface PublicKeyCertificate {
+  certificate: string // base64 DER
+  validFrom: string
+  validTo: string
+}
+
+interface ChallengeResponse {
+  challenge: string
+  timestamp: string
+}
+
+interface KsefTokenAuthResponse {
+  referenceNumber: string
+  authenticationToken: string
+}
+
+interface AuthStatusResponse {
+  processingCode: number
+  processingDescription: string
+}
+
+interface TokenRedeemResponse {
+  accessToken: {
+    token: string
+    validUntil: string
+  }
+  refreshToken: {
+    token: string
+    validUntil: string
+  }
+}
+
+interface TokenRefreshResponse {
+  accessToken: {
+    token: string
+    validUntil: string
+  }
+}
+
+const log = {
+  info: (...args: unknown[]) => console.log('[KSeF]', ...args),
+  warn: (...args: unknown[]) => console.warn('[KSeF]', ...args),
+  error: (...args: unknown[]) => console.error('[KSeF]', ...args)
+}
+
 export class KsefApiClient {
   private config: AppConfig
   private accessToken: string | null = null
+  private accessTokenValidUntil: Date | null = null
+  private refreshToken: string | null = null
+  private refreshTokenValidUntil: Date | null = null
+  private authInProgress: Promise<void> | null = null
 
   constructor(config: AppConfig) {
     this.config = config
-    this.accessToken = config.token || null
   }
 
   updateConfig(config: AppConfig): void {
     this.config = config
-    this.accessToken = config.token || null
+    // Reset auth state when config changes — forces re-authentication
+    this.accessToken = null
+    this.accessTokenValidUntil = null
+    this.refreshToken = null
+    this.refreshTokenValidUntil = null
+    this.authInProgress = null
   }
 
   private get baseUrl(): string {
     return this.config.apiUrl.replace(/\/$/, '')
   }
 
-  private async request<T>(
+  // ─── Low-level HTTP helper (no auth header injection) ──────────────────────
+
+  private rawRequest<T>(
     method: string,
-    path: string,
+    url: string,
     body?: unknown,
     headers?: Record<string, string>
-  ): Promise<T> {
-    const url = `${this.baseUrl}${path}`
-
+  ): Promise<{ statusCode: number; data: T; raw: string }> {
     const requestHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...headers
     }
 
-    if (this.accessToken) {
-      requestHeaders['Authorization'] = `Bearer ${this.accessToken}`
-    }
-
     return new Promise((resolve, reject) => {
-      const request = net.request({
-        method,
-        url
-      })
+      const request = net.request({ method, url })
 
       for (const [key, value] of Object.entries(requestHeaders)) {
         request.setHeader(key, value)
@@ -59,18 +106,12 @@ export class KsefApiClient {
         })
 
         response.on('end', () => {
-          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
-            try {
-              resolve(JSON.parse(responseData) as T)
-            } catch {
-              resolve(responseData as unknown as T)
-            }
-          } else {
-            reject(
-              new Error(
-                `KSeF API Error ${response.statusCode}: ${responseData}`
-              )
-            )
+          const statusCode = response.statusCode ?? 0
+          try {
+            const parsed = JSON.parse(responseData) as T
+            resolve({ statusCode, data: parsed, raw: responseData })
+          } catch {
+            resolve({ statusCode, data: responseData as unknown as T, raw: responseData })
           }
         })
 
@@ -91,6 +132,294 @@ export class KsefApiClient {
     })
   }
 
+  // ─── Authenticated request (ensures auth, injects Bearer token) ────────────
+
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>
+  ): Promise<T> {
+    await this.ensureAuthenticated()
+
+    const url = `${this.baseUrl}${path}`
+    const authHeaders: Record<string, string> = {
+      ...headers,
+      Authorization: `Bearer ${this.accessToken}`
+    }
+
+    const result = await this.rawRequest<T>(method, url, body, authHeaders)
+
+    if (result.statusCode >= 200 && result.statusCode < 300) {
+      return result.data
+    }
+
+    throw new Error(`KSeF API Error ${result.statusCode}: ${result.raw}`)
+  }
+
+  // ─── Authentication flow ───────────────────────────────────────────────────
+
+  private async ensureAuthenticated(): Promise<void> {
+    // If there is already an auth flow in progress, wait for it
+    if (this.authInProgress) {
+      await this.authInProgress
+      return
+    }
+
+    // If access token is still valid, nothing to do
+    if (this.accessToken && this.accessTokenValidUntil) {
+      const now = new Date()
+      // Refresh 60 seconds before actual expiry to avoid race conditions
+      if (now.getTime() < this.accessTokenValidUntil.getTime() - 60_000) {
+        return
+      }
+
+      // Access token expired or about to expire — try refresh
+      if (this.refreshToken && this.refreshTokenValidUntil) {
+        if (now.getTime() < this.refreshTokenValidUntil.getTime() - 30_000) {
+          this.authInProgress = this.refreshAccessToken()
+            .finally(() => { this.authInProgress = null })
+          await this.authInProgress
+          return
+        }
+      }
+    }
+
+    // No valid tokens — do full auth
+    if (!this.config.token || !this.config.nip) {
+      throw new Error('KSeF token and NIP must be configured before making API calls')
+    }
+
+    this.authInProgress = this.performFullAuth()
+      .finally(() => { this.authInProgress = null })
+    await this.authInProgress
+  }
+
+  /** Step 9: Refresh access token using refresh token */
+  private async refreshAccessToken(): Promise<void> {
+    log.info('Refreshing access token...')
+    const url = `${this.baseUrl}/auth/token/refresh`
+    const result = await this.rawRequest<TokenRefreshResponse>(
+      'POST',
+      url,
+      { refreshToken: this.refreshToken },
+      { Authorization: `Bearer ${this.accessToken}` }
+    )
+
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      log.warn('Token refresh failed, performing full re-auth:', result.raw)
+      // Clear state and fall through to full auth
+      this.accessToken = null
+      this.refreshToken = null
+      await this.performFullAuth()
+      return
+    }
+
+    this.accessToken = result.data.accessToken.token
+    this.accessTokenValidUntil = new Date(result.data.accessToken.validUntil)
+    log.info('Access token refreshed, valid until', this.accessTokenValidUntil.toISOString())
+  }
+
+  /** Steps 1-8: Full authentication flow */
+  private async performFullAuth(): Promise<void> {
+    log.info('Starting full KSeF authentication flow...')
+
+    // Step 1: Get MF public key certificate
+    const publicKey = await this.fetchPublicKey()
+
+    // Step 2: Get challenge
+    const { challenge, timestampMs } = await this.fetchChallenge()
+
+    // Step 3: Encrypt "{ksefToken}|{timestampMs}" with RSA-OAEP SHA-256
+    const encryptedToken = this.encryptToken(this.config.token, timestampMs, publicKey)
+
+    // Step 4: Authenticate with KSeF token
+    const { referenceNumber, authenticationToken } = await this.authenticateWithToken(
+      challenge,
+      this.config.nip,
+      encryptedToken
+    )
+
+    // Step 6: Poll until auth is processed
+    await this.pollAuthStatus(referenceNumber, authenticationToken)
+
+    // Step 7: Redeem token
+    const tokens = await this.redeemToken(authenticationToken)
+
+    // Step 8: Store tokens
+    this.accessToken = tokens.accessToken.token
+    this.accessTokenValidUntil = new Date(tokens.accessToken.validUntil)
+    this.refreshToken = tokens.refreshToken.token
+    this.refreshTokenValidUntil = new Date(tokens.refreshToken.validUntil)
+
+    log.info(
+      'Authentication complete. Access token valid until',
+      this.accessTokenValidUntil.toISOString()
+    )
+  }
+
+  /** Step 1: Fetch the MF public key certificate and extract the RSA public key */
+  private async fetchPublicKey(): Promise<crypto.KeyObject> {
+    log.info('Fetching MF public key certificate...')
+    const url = `${this.baseUrl}/security/public-key-certificates`
+    const result = await this.rawRequest<PublicKeyCertificate[]>('GET', url)
+
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      throw new Error(`Failed to fetch public key certificates: ${result.raw}`)
+    }
+
+    const certs = result.data
+    if (!Array.isArray(certs) || certs.length === 0) {
+      throw new Error('No public key certificates returned from KSeF')
+    }
+
+    // Pick the certificate that is currently valid
+    const now = new Date()
+    const validCert = certs.find((c) => {
+      const from = new Date(c.validFrom)
+      const to = new Date(c.validTo)
+      return now >= from && now <= to
+    })
+
+    const cert = validCert ?? certs[0]
+    log.info('Using certificate valid from', cert.validFrom, 'to', cert.validTo)
+
+    // The certificate field is base64-encoded DER (X.509)
+    const derBuffer = Buffer.from(cert.certificate, 'base64')
+
+    // Convert DER to PEM so Node's crypto can parse it
+    const pemCert =
+      '-----BEGIN CERTIFICATE-----\n' +
+      derBuffer.toString('base64').match(/.{1,64}/g)!.join('\n') +
+      '\n-----END CERTIFICATE-----'
+
+    // Create an X509Certificate and extract the public key
+    const x509 = new crypto.X509Certificate(pemCert)
+    const publicKey = x509.publicKey
+
+    return publicKey
+  }
+
+  /** Step 2: Request a challenge from KSeF */
+  private async fetchChallenge(): Promise<{ challenge: string; timestampMs: string }> {
+    log.info('Requesting auth challenge...')
+    const url = `${this.baseUrl}/auth/challenge`
+    const result = await this.rawRequest<ChallengeResponse>('POST', url, {
+      contextNip: this.config.nip
+    })
+
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      throw new Error(`Failed to get auth challenge: ${result.raw}`)
+    }
+
+    const { challenge, timestamp } = result.data
+    log.info('Challenge received:', challenge.substring(0, 16) + '...')
+
+    return { challenge, timestampMs: timestamp }
+  }
+
+  /** Step 3: Encrypt "{ksefToken}|{timestampMs}" using RSA-OAEP with SHA-256 */
+  private encryptToken(
+    ksefToken: string,
+    timestampMs: string,
+    publicKey: crypto.KeyObject
+  ): string {
+    const plaintext = `${ksefToken}|${timestampMs}`
+    const encrypted = crypto.publicEncrypt(
+      {
+        key: publicKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha256'
+      },
+      Buffer.from(plaintext, 'utf-8')
+    )
+    return encrypted.toString('base64')
+  }
+
+  /** Step 4-5: Send encrypted token to get referenceNumber + authenticationToken */
+  private async authenticateWithToken(
+    challenge: string,
+    nip: string,
+    encryptedToken: string
+  ): Promise<KsefTokenAuthResponse> {
+    log.info('Authenticating with KSeF token...')
+    const url = `${this.baseUrl}/auth/ksef-token`
+    const result = await this.rawRequest<KsefTokenAuthResponse>('POST', url, {
+      challenge,
+      contextIdentifier: {
+        type: 'Nip',
+        value: nip
+      },
+      encryptedToken
+    })
+
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      throw new Error(`KSeF token authentication failed: ${result.raw}`)
+    }
+
+    log.info('Auth submitted, reference:', result.data.referenceNumber)
+    return result.data
+  }
+
+  /** Step 6: Poll auth status until processing is complete */
+  private async pollAuthStatus(
+    referenceNumber: string,
+    authenticationToken: string
+  ): Promise<void> {
+    log.info('Polling auth status for reference:', referenceNumber)
+    const url = `${this.baseUrl}/auth/${encodeURIComponent(referenceNumber)}`
+    const maxAttempts = 30
+    const pollIntervalMs = 2000
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await this.rawRequest<AuthStatusResponse>('GET', url, undefined, {
+        Authorization: `Bearer ${authenticationToken}`
+      })
+
+      if (result.statusCode === 200) {
+        log.info('Auth processing complete after', attempt, 'poll(s)')
+        return
+      }
+
+      if (result.statusCode === 202) {
+        // Still processing
+        log.info(`Auth still processing (attempt ${attempt}/${maxAttempts})...`)
+        await this.sleep(pollIntervalMs)
+        continue
+      }
+
+      throw new Error(
+        `Unexpected status ${result.statusCode} while polling auth status: ${result.raw}`
+      )
+    }
+
+    throw new Error(
+      `Auth status polling timed out after ${maxAttempts} attempts for reference ${referenceNumber}`
+    )
+  }
+
+  /** Step 7: Redeem authentication token for access + refresh tokens */
+  private async redeemToken(authenticationToken: string): Promise<TokenRedeemResponse> {
+    log.info('Redeeming authentication token...')
+    const url = `${this.baseUrl}/auth/token/redeem`
+    const result = await this.rawRequest<TokenRedeemResponse>('POST', url, undefined, {
+      Authorization: `Bearer ${authenticationToken}`
+    })
+
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      throw new Error(`Token redemption failed: ${result.raw}`)
+    }
+
+    log.info('Token redeemed successfully')
+    return result.data
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  // ─── Public API methods ────────────────────────────────────────────────────
+
   async queryInvoices(
     filters: InvoiceQueryFilters
   ): Promise<QueryInvoicesMetadataResponse> {
@@ -102,14 +431,14 @@ export class KsefApiClient {
   }
 
   async downloadInvoice(ksefNumber: string): Promise<string> {
+    await this.ensureAuthenticated()
+
     const url = `${this.baseUrl}/invoices/ksef/${encodeURIComponent(ksefNumber)}`
 
     return new Promise((resolve, reject) => {
       const request = net.request({ method: 'GET', url })
 
-      if (this.accessToken) {
-        request.setHeader('Authorization', `Bearer ${this.accessToken}`)
-      }
+      request.setHeader('Authorization', `Bearer ${this.accessToken}`)
       request.setHeader('Accept', 'application/xml')
 
       let data = ''

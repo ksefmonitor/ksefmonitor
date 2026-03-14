@@ -95,7 +95,7 @@ function showMainWindow(): void {
 }
 
 function createWindow(): void {
-  const appIconPath = path.join(__dirname, '../../resources/icon.png')
+  const appIconPath = path.join(__dirname, '../../resources/icon.ico')
 
   mainWindow = new BrowserWindow({
     width: 1400,
