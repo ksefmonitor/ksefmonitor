@@ -376,30 +376,36 @@ export class KsefApiClient {
       const keyBuf = fs.readFileSync(keyFilePath)
       const isPem = keyBuf.toString('utf-8').trim().startsWith('-----')
 
-      this.log.info(`Key format: ${isPem ? 'PEM' : 'DER'}, size: ${keyBuf.length} bytes`)
+      const keyHeader = keyBuf.toString('utf-8').split('\n')[0]
+      this.log.info(`Key format: ${isPem ? 'PEM' : 'DER'}, size: ${keyBuf.length} bytes, header: ${keyHeader}`)
+      this.log.info(`Key password provided: ${keyPassword ? 'yes (' + keyPassword.length + ' chars)' : 'no'}`)
 
-      const tryFormats = isPem
-        ? [
-            { key: keyBuf, passphrase: keyPassword || undefined },
-            { key: keyBuf, format: 'pem' as const, passphrase: keyPassword || undefined }
-          ]
-        : [
-            { key: keyBuf, format: 'der' as const, type: 'pkcs8' as const },
-            { key: keyBuf, format: 'der' as const, type: 'pkcs1' as const },
-            { key: keyBuf, format: 'der' as const, type: 'sec1' as const }
-          ]
+      // For encrypted PEM keys, passphrase is required
+      const pass = keyPassword || undefined
 
       let lastError: Error | null = null
       privateKey = null as any
-      for (const opts of tryFormats) {
+
+      // Try with passphrase first (for encrypted keys), then without
+      const attempts: any[] = [
+        { key: keyBuf, passphrase: pass },
+        { key: keyBuf, format: 'pem', passphrase: pass },
+        { key: keyBuf },
+        { key: keyBuf, format: 'der', type: 'pkcs8' },
+        { key: keyBuf, format: 'der', type: 'pkcs1' }
+      ]
+
+      for (const opts of attempts) {
         try {
-          privateKey = crypto.createPrivateKey(opts as any)
+          privateKey = crypto.createPrivateKey(opts)
+          this.log.info('Key loaded successfully with options: ' + JSON.stringify({ ...opts, key: '[buffer]', passphrase: opts.passphrase ? '[set]' : undefined }))
           break
         } catch (e: any) {
           lastError = e
         }
       }
       if (!privateKey) {
+        this.log.error('All key loading attempts failed. Last error: ' + lastError?.message)
         throw lastError || new Error('Nie udało się odczytać klucza prywatnego')
       }
 
