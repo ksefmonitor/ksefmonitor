@@ -40,10 +40,11 @@ function migrateConfig(config: AppConfig): AppConfig {
 function decryptConfig(config: AppConfig): AppConfig {
   const decrypted = { ...config }
 
-  // Decrypt company tokens
+  // Decrypt company secrets
   decrypted.companies = config.companies.map(c => ({
     ...c,
-    token: decryptString(c.token)
+    token: c.token ? decryptString(c.token) : '',
+    keyPassword: c.keyPassword ? decryptString(c.keyPassword) : ''
   }))
 
   // Decrypt integration passwords
@@ -61,10 +62,11 @@ function decryptConfig(config: AppConfig): AppConfig {
 function encryptConfig(config: AppConfig): AppConfig {
   const encrypted = { ...config }
 
-  // Encrypt company tokens
+  // Encrypt company secrets
   encrypted.companies = config.companies.map(c => ({
     ...c,
-    token: encryptString(c.token)
+    token: c.token ? encryptString(c.token) : '',
+    keyPassword: c.keyPassword ? encryptString(c.keyPassword) : ''
   }))
 
   // Encrypt integration passwords

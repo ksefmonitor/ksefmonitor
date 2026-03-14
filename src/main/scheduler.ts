@@ -37,7 +37,7 @@ export class InvoiceScheduler {
 
     const config = getConfig()
     const activeCompany = config.companies?.[config.activeCompanyIndex]
-    if (!config.autoCheckEnabled || !activeCompany?.token) {
+    if (!config.autoCheckEnabled || !activeCompany?.certPath) {
       return
     }
 

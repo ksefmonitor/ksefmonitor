@@ -120,7 +120,7 @@ export function DashboardPage() {
       setAutoCheckRunning(status)
 
       const activeCompany = config.companies?.[config.activeCompanyIndex]
-      if (!activeCompany?.token) {
+      if (!activeCompany?.certPath) {
         setHasToken(false)
         setLoading(false)
         return

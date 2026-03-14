@@ -253,7 +253,7 @@ function setupIpcHandlers(): void {
   ipcMain.handle('query-invoices', async (_event, filters: InvoiceQueryFilters) => {
     const config = getConfig()
     const activeCompany = config.companies[config.activeCompanyIndex]
-    if (!activeCompany?.token) {
+    if (!activeCompany?.certPath) {
       return { invoices: [], hasMore: false, isTruncated: false, permanentStorageHwmDate: '' }
     }
     try {
@@ -301,7 +301,7 @@ function setupIpcHandlers(): void {
     await dbReady
     const config = getConfig()
     const activeCompany = config.companies[config.activeCompanyIndex]
-    if (!activeCompany?.token) {
+    if (!activeCompany?.certPath) {
       throw new Error('Brak skonfigurowanego tokenu')
     }
 
@@ -428,6 +428,28 @@ function setupIpcHandlers(): void {
   ipcMain.handle('verify-pin', (_event, pin: string) => verifyAppPin(pin))
   ipcMain.handle('set-app-pin', (_event, pin: string) => setAppPin(pin))
 
+  ipcMain.handle('select-cert-file', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Wybierz certyfikat',
+      filters: [{ name: 'Certyfikaty', extensions: ['p12', 'pfx'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('select-key-file', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Wybierz klucz prywatny',
+      filters: [{ name: 'Klucz prywatny', extensions: ['key', 'pem'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
   ipcMain.handle('clear-all-data', async () => {
     await dbReady
     const result = clearAllData()
@@ -540,7 +562,7 @@ app.whenReady().then(async () => {
 
   // Start auto-check if enabled and active company has a token
   const activeCompany = config.companies[config.activeCompanyIndex]
-  if (config.autoCheckEnabled && activeCompany?.token) {
+  if (config.autoCheckEnabled && activeCompany?.certPath) {
     scheduler.start()
   }
 

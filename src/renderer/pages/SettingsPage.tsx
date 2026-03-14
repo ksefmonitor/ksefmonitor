@@ -50,9 +50,11 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
 
   // Add company form
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newToken, setNewToken] = useState('')
   const [newName, setNewName] = useState('')
   const [newNip, setNewNip] = useState('')
+  const [newCertPath, setNewCertPath] = useState('')
+  const [newKeyPath, setNewKeyPath] = useState('')
+  const [newKeyPassword, setNewKeyPassword] = useState('')
 
   // Per-company token visibility
   const [visibleTokens, setVisibleTokens] = useState<Record<number, boolean>>({})
@@ -105,22 +107,26 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
   }
 
   function handleAddCompany() {
-    if (!config || !newToken) return
+    if (!config || !newCertPath || !newKeyPath || !newNip) return
 
-    const nip = extractNipFromToken(newToken)
     const company: CompanyConfig = {
-      name: newName || (nip ? `Firma (${nip})` : 'Nowa firma'),
-      token: newToken,
-      nip
+      name: newName || `Firma (${newNip})`,
+      nip: newNip,
+      certPath: newCertPath,
+      keyPath: newKeyPath,
+      keyPassword: newKeyPassword,
+      token: ''
     }
 
     const companies = [...config.companies, company]
     const activeCompanyIndex = config.companies.length === 0 ? 0 : config.activeCompanyIndex
 
     setConfig({ ...config, companies, activeCompanyIndex })
-    setNewToken('')
     setNewName('')
     setNewNip('')
+    setNewCertPath('')
+    setNewKeyPath('')
+    setNewKeyPassword('')
     setShowAddForm(false)
   }
 
@@ -307,33 +313,21 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                             {company.nip || '(nie wykryto)'}
                           </Typography>
                         </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', minWidth: 50 }}>
+                            Cert:
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {company.certPath?.split(/[/\\]/).pop() || '(brak)'}
+                          </Typography>
+                        </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="caption" sx={{ color: 'text.secondary', minWidth: 50 }}>
-                            Token:
+                            Klucz:
                           </Typography>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.75rem',
-                              flex: 1,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            {isTokenVisible ? company.token : maskToken(company.token)}
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {company.keyPath?.split(/[/\\]/).pop() || '(brak)'}
                           </Typography>
-                          <IconButton
-                            onClick={() => toggleTokenVisibility(index)}
-                            size="small"
-                          >
-                            {isTokenVisible ? (
-                              <VisibilityOffRoundedIcon fontSize="small" />
-                            ) : (
-                              <VisibilityRoundedIcon fontSize="small" />
-                            )}
-                          </IconButton>
                         </Box>
                       </Box>
                     </ListItem>
@@ -357,42 +351,66 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                 Nowa firma
               </Typography>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
-                    label="Token autoryzacyjny KSeF"
-                    value={newToken}
-                    onChange={(e) => handleNewTokenChange(e.target.value)}
+                    label="NIP firmy"
+                    value={newNip}
+                    onChange={(e) => {
+                      setNewNip(e.target.value)
+                      if (!newName && e.target.value.length >= 10) setNewName(`Firma (${e.target.value})`)
+                    }}
                     fullWidth
-                    multiline
-                    rows={2}
-                    placeholder="Wklej token KSeF..."
-                    helperText="NIP zostanie automatycznie wyodrębniony z tokenu"
+                    placeholder="0000000000"
+                    helperText="NIP podmiotu dla którego wydano certyfikat"
                   />
                 </Grid>
-                {newNip && (
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      label="NIP (wykryty automatycznie)"
-                      value={newNip}
-                      fullWidth
-                      InputProps={{ readOnly: true }}
-                      sx={{
-                        '& .MuiInputBase-input': {
-                          fontFamily: 'monospace',
-                          fontWeight: 600
-                        }
-                      }}
-                    />
-                  </Grid>
-                )}
-                <Grid size={{ xs: 12, sm: newNip ? 6 : 12 }}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     label="Nazwa firmy"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     fullWidth
                     placeholder="np. Moja Firma Sp. z o.o."
-                    helperText="Opcjonalna nazwa do wyświetlania"
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    label="Certyfikat (.cer / .pem)"
+                    value={newCertPath ? newCertPath.split(/[/\\]/).pop() : ''}
+                    fullWidth
+                    InputProps={{ readOnly: true }}
+                    placeholder="Wybierz plik certyfikatu..."
+                    onClick={async () => {
+                      const path = await window.api.selectCertFile()
+                      if (path) setNewCertPath(path)
+                    }}
+                    sx={{ cursor: 'pointer', '& .MuiInputBase-input': { cursor: 'pointer' } }}
+                    helperText={newCertPath || 'Kliknij aby wybrać plik'}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    label="Klucz prywatny (.key / .pem)"
+                    value={newKeyPath ? newKeyPath.split(/[/\\]/).pop() : ''}
+                    fullWidth
+                    InputProps={{ readOnly: true }}
+                    placeholder="Wybierz plik klucza..."
+                    onClick={async () => {
+                      const path = await window.api.selectKeyFile()
+                      if (path) setNewKeyPath(path)
+                    }}
+                    sx={{ cursor: 'pointer', '& .MuiInputBase-input': { cursor: 'pointer' } }}
+                    helperText={newKeyPath || 'Kliknij aby wybrać plik'}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    label="Hasło klucza prywatnego"
+                    type="password"
+                    value={newKeyPassword}
+                    onChange={(e) => setNewKeyPassword(e.target.value)}
+                    fullWidth
+                    placeholder="Hasło do klucza prywatnego (jeśli wymagane)"
                   />
                 </Grid>
               </Grid>
@@ -401,9 +419,11 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                   variant="text"
                   onClick={() => {
                     setShowAddForm(false)
-                    setNewToken('')
                     setNewName('')
                     setNewNip('')
+                    setNewCertPath('')
+                    setNewKeyPath('')
+                    setNewKeyPassword('')
                   }}
                 >
                   Anuluj
@@ -411,7 +431,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                 <Button
                   variant="contained"
                   onClick={handleAddCompany}
-                  disabled={!newToken}
+                  disabled={!newCertPath || !newKeyPath || !newNip}
                 >
                   Dodaj
                 </Button>

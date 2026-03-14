@@ -1,16 +1,11 @@
 import { net } from 'electron'
 import * as crypto from 'crypto'
+import * as fs from 'fs'
 import type {
   AppConfig,
   InvoiceQueryFilters,
   QueryInvoicesMetadataResponse
 } from '../shared/types'
-
-interface PublicKeyCertificate {
-  certificate: string // base64 DER
-  validFrom: string
-  validTo: string
-}
 
 interface ChallengeResponse {
   challenge: string
@@ -76,8 +71,10 @@ export class KsefApiClient {
   private log: Logger
 
   // Derived from active company
-  private ksefToken: string = ''
   private nip: string = ''
+  private certPath: string = ''
+  private keyPath: string = ''
+  private keyPassword: string = ''
 
   constructor(config: AppConfig, log?: Logger) {
     this.config = config
@@ -87,8 +84,10 @@ export class KsefApiClient {
 
   private extractActiveCompany(): void {
     const company = this.config.companies?.[this.config.activeCompanyIndex]
-    this.ksefToken = company?.token || ''
     this.nip = company?.nip || ''
+    this.certPath = company?.certPath || ''
+    this.keyPath = company?.keyPath || ''
+    this.keyPassword = company?.keyPassword || ''
   }
 
   updateConfig(config: AppConfig): void {
@@ -223,8 +222,8 @@ export class KsefApiClient {
     }
 
     // No valid tokens — do full auth
-    if (!this.ksefToken || !this.nip) {
-      throw new Error('KSeF token and NIP must be configured before making API calls')
+    if (!this.certPath || !this.keyPath || !this.nip) {
+      throw new Error('Certyfikat, klucz prywatny i NIP muszą być skonfigurowane')
     }
 
     this.authInProgress = this.performFullAuth()
@@ -257,33 +256,25 @@ export class KsefApiClient {
     this.log.info('Access token refreshed, valid until', this.accessTokenValidUntil.toISOString())
   }
 
-  /** Steps 1-8: Full authentication flow */
+  /** Full authentication flow using certificate (XAdES) */
   private async performFullAuth(): Promise<void> {
-    this.log.info('Starting full KSeF authentication flow...')
+    this.log.info('Starting KSeF certificate authentication...')
 
-    // Step 1: Get MF public key certificate
-    const publicKey = await this.fetchPublicKey()
+    // Step 1: Get challenge
+    const { challenge } = await this.fetchChallenge()
 
-    // Step 2: Get challenge
-    const { challenge, timestampMs } = await this.fetchChallenge()
+    // Step 2: Sign and submit with certificate
+    const result = await this.authenticateWithCertificate(challenge, this.nip)
+    const referenceNumber = result.referenceNumber
+    const authToken = result.authenticationToken.token
 
-    // Step 3: Encrypt "{ksefToken}|{timestampMs}" with RSA-OAEP SHA-256
-    const encryptedToken = this.encryptToken(this.ksefToken, timestampMs, publicKey)
+    // Step 3: Poll until auth is processed
+    await this.pollAuthStatus(referenceNumber, authToken)
 
-    // Step 4: Authenticate with KSeF token
-    const { referenceNumber, authenticationToken } = await this.authenticateWithToken(
-      challenge,
-      this.nip,
-      encryptedToken
-    )
+    // Step 4: Redeem token
+    const tokens = await this.redeemToken(authToken)
 
-    // Step 6: Poll until auth is processed
-    await this.pollAuthStatus(referenceNumber, authenticationToken.token)
-
-    // Step 7: Redeem token
-    const tokens = await this.redeemToken(authenticationToken.token)
-
-    // Step 8: Store tokens
+    // Step 5: Store tokens
     this.accessToken = tokens.accessToken.token
     this.accessTokenValidUntil = new Date(tokens.accessToken.validUntil)
     this.refreshToken = tokens.refreshToken.token
@@ -295,49 +286,117 @@ export class KsefApiClient {
     )
   }
 
-  /** Step 1: Fetch the MF public key certificate and extract the RSA public key */
-  private async fetchPublicKey(): Promise<crypto.KeyObject> {
-    this.log.info('Fetching MF public key certificate...')
-    const url = `${this.baseUrl}/security/public-key-certificates`
-    const result = await this.rawRequest<PublicKeyCertificate[]>('GET', url)
+  /** Authenticate using XAdES-signed certificate */
+  private async authenticateWithCertificate(
+    challenge: string,
+    nip: string
+  ): Promise<KsefTokenAuthResponse> {
+    this.log.info('Authenticating with certificate (XAdES)...')
 
-    if (result.statusCode < 200 || result.statusCode >= 300) {
-      throw new Error(`Failed to fetch public key certificates: ${result.raw}`)
+    // Read certificate and key files
+    if (!fs.existsSync(this.certPath)) {
+      throw new Error(`Plik certyfikatu nie istnieje: ${this.certPath}`)
     }
-
-    const certs = result.data
-    if (!Array.isArray(certs) || certs.length === 0) {
-      throw new Error('No public key certificates returned from KSeF')
+    if (!fs.existsSync(this.keyPath)) {
+      throw new Error(`Plik klucza prywatnego nie istnieje: ${this.keyPath}`)
     }
+    const certPem = fs.readFileSync(this.certPath, 'utf-8')
+    const keyPem = fs.readFileSync(this.keyPath, 'utf-8')
 
-    // Pick the certificate that is currently valid
-    const now = new Date()
-    const validCert = certs.find((c) => {
-      const from = new Date(c.validFrom)
-      const to = new Date(c.validTo)
-      return now >= from && now <= to
+    // Build AuthTokenRequest XML
+    const authTokenXml = `<?xml version="1.0" encoding="utf-8"?>
+<AuthTokenRequest xmlns="http://ksef.mf.gov.pl/auth/token/2.0">
+    <Challenge>${challenge}</Challenge>
+    <ContextIdentifier>
+        <Nip>${nip}</Nip>
+    </ContextIdentifier>
+    <SubjectIdentifierType>certificateSubject</SubjectIdentifierType>
+</AuthTokenRequest>`
+
+    // Sign with XAdES using the certificate and private key
+    const signedXml = this.signXmlWithCertificate(authTokenXml, certPem, keyPem, this.keyPassword)
+
+    // Send signed XML to KSeF
+    const url = `${this.baseUrl}/auth/xades-signature`
+    const response = await new Promise<{ statusCode: number; data: KsefTokenAuthResponse; raw: string }>((resolve, reject) => {
+      const request = net.request({ method: 'POST', url })
+      request.setHeader('Content-Type', 'application/xml')
+      request.setHeader('Accept', 'application/json')
+
+      let responseData = ''
+      request.on('response', (resp) => {
+        resp.on('data', (chunk) => { responseData += chunk.toString() })
+        resp.on('end', () => {
+          const statusCode = resp.statusCode ?? 0
+          try {
+            resolve({ statusCode, data: JSON.parse(responseData), raw: responseData })
+          } catch {
+            resolve({ statusCode, data: responseData as any, raw: responseData })
+          }
+        })
+        resp.on('error', reject)
+      })
+      request.on('error', reject)
+      request.write(signedXml)
+      request.end()
     })
 
-    const cert = validCert ?? certs[0]
-    this.log.info('Using certificate valid from', cert.validFrom, 'to', cert.validTo)
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      let message = `Błąd autoryzacji certyfikatem (${response.statusCode})`
+      try {
+        const parsed = typeof response.data === 'object' ? response.data : JSON.parse(response.raw)
+        const status = (parsed as any)?.status
+        if (status?.description) message = status.description
+        if (status?.details?.length) message += ': ' + status.details.join('; ')
+      } catch { /* use default */ }
+      throw new Error(message)
+    }
 
-    // The certificate field is base64-encoded DER (X.509)
-    const derBuffer = Buffer.from(cert.certificate, 'base64')
-
-    // Convert DER to PEM so Node's crypto can parse it
-    const pemCert =
-      '-----BEGIN CERTIFICATE-----\n' +
-      derBuffer.toString('base64').match(/.{1,64}/g)!.join('\n') +
-      '\n-----END CERTIFICATE-----'
-
-    // Create an X509Certificate and extract the public key
-    const x509 = new crypto.X509Certificate(pemCert)
-    const publicKey = x509.publicKey
-
-    return publicKey
+    this.log.info('Certificate auth submitted, reference:', response.data.referenceNumber)
+    return response.data
   }
 
-  /** Step 2: Request a challenge from KSeF */
+  /** Sign XML document with XAdES-BES using separate cert and key files */
+  private signXmlWithCertificate(xml: string, certPem: string, keyPem: string, keyPassword: string): string {
+    try {
+      // Decrypt private key if password-protected
+      const privateKey = crypto.createPrivateKey({
+        key: keyPem,
+        passphrase: keyPassword || undefined
+      })
+      const decryptedKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+
+      // Sign with xml-crypto (enveloped XAdES-BES signature)
+      const { SignedXml } = require('xml-crypto')
+
+      const sig = new SignedXml({
+        privateKey: decryptedKeyPem,
+        publicCert: certPem,
+        signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+        canonicalizationAlgorithm: 'http://www.w3.org/2001/10/xml-exc-c14n#'
+      })
+
+      sig.addReference({
+        uri: '',
+        transforms: [
+          'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+          'http://www.w3.org/2001/10/xml-exc-c14n#'
+        ],
+        digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256'
+      })
+
+      sig.computeSignature(xml, {
+        location: { reference: '//*[local-name()="AuthTokenRequest"]', action: 'append' }
+      })
+
+      return sig.getSignedXml()
+    } catch (err: any) {
+      this.log.error('Certificate signing failed:', err.message)
+      throw new Error('Nie udało się podpisać dokumentu certyfikatem: ' + err.message)
+    }
+  }
+
+  /** Request a challenge from KSeF */
   private async fetchChallenge(): Promise<{ challenge: string; timestampMs: number }> {
     this.log.info('Requesting auth challenge...')
     const url = `${this.baseUrl}/auth/challenge`
@@ -353,50 +412,7 @@ export class KsefApiClient {
     return { challenge, timestampMs }
   }
 
-  /** Step 3: Encrypt "{ksefToken}|{timestampMs}" using RSA-OAEP with SHA-256 */
-  private encryptToken(
-    ksefToken: string,
-    timestampMs: number,
-    publicKey: crypto.KeyObject
-  ): string {
-    const plaintext = `${ksefToken}|${timestampMs}`
-    const encrypted = crypto.publicEncrypt(
-      {
-        key: publicKey,
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256'
-      },
-      Buffer.from(plaintext, 'utf-8')
-    )
-    return encrypted.toString('base64')
-  }
-
-  /** Step 4-5: Send encrypted token to get referenceNumber + authenticationToken */
-  private async authenticateWithToken(
-    challenge: string,
-    nip: string,
-    encryptedToken: string
-  ): Promise<KsefTokenAuthResponse> {
-    this.log.info('Authenticating with KSeF token...')
-    const url = `${this.baseUrl}/auth/ksef-token`
-    const result = await this.rawRequest<KsefTokenAuthResponse>('POST', url, {
-      challenge,
-      contextIdentifier: {
-        type: 'Nip',
-        value: nip
-      },
-      encryptedToken
-    })
-
-    if (result.statusCode < 200 || result.statusCode >= 300) {
-      throw new Error(`KSeF token authentication failed: ${result.raw}`)
-    }
-
-    this.log.info('Auth submitted, reference:', result.data.referenceNumber)
-    return result.data
-  }
-
-  /** Step 6: Poll auth status until processing is complete */
+  /** Poll auth status until processing is complete */
   private async pollAuthStatus(
     referenceNumber: string,
     authenticationToken: string

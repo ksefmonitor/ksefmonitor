@@ -8,8 +8,13 @@ export function extractNipFromToken(token: string): string {
 
 export interface CompanyConfig {
   name: string
-  token: string
-  nip: string // auto-extracted from token
+  nip: string
+  certPath: string       // path to certificate file (.cer/.pem)
+  keyPath: string        // path to private key file (.key/.pem)
+  keyPassword: string    // password for the private key
+  // Legacy
+  token?: string
+  authMethod?: string
 }
 
 export interface AppConfig {
@@ -209,6 +214,8 @@ export interface IpcApi {
   testNotification: () => Promise<void>
   updateInvoiceStatusBulk: (ksefNumbers: string[], status: string) => Promise<void>
   clearAllData: () => Promise<{ deleted: number }>
+  selectCertFile: () => Promise<string | null>
+  selectKeyFile: () => Promise<string | null>
   hasAppPin: () => Promise<boolean>
   verifyPin: (pin: string) => Promise<boolean>
   setAppPin: (pin: string) => Promise<void>

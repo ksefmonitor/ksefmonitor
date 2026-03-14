@@ -79,6 +79,9 @@ const api = {
   updateInvoiceStatus: (ksefNumber: string, status: string): Promise<void> =>
     ipcRenderer.invoke('update-invoice-status', ksefNumber, status),
 
+  selectCertFile: (): Promise<string | null> => ipcRenderer.invoke('select-cert-file'),
+  selectKeyFile: (): Promise<string | null> => ipcRenderer.invoke('select-key-file'),
+
   clearAllData: (): Promise<{ deleted: number }> => ipcRenderer.invoke('clear-all-data'),
 
   updateInvoiceStatusBulk: (ksefNumbers: string[], status: string): Promise<void> =>
