@@ -58,13 +58,13 @@ export const appLog = {
 }
 
 function showNotification(title: string, body: string): void {
-  // Use tray balloon - works reliably on Windows without AppUserModelId issues
+  // Try native Windows toast notification first
+  if (Notification.isSupported()) {
+    new Notification({ title, body, silent: false }).show()
+  }
+  // Also show tray balloon as backup
   if (tray) {
-    tray.displayBalloon({
-      title,
-      content: body,
-      iconType: 'info'
-    })
+    tray.displayBalloon({ title, content: body, iconType: 'info' })
   }
   shell.beep()
 }
@@ -507,8 +507,8 @@ declare module 'electron' {
   }
 }
 
-// Required for Windows notifications
-app.setAppUserModelId('pl.ksef.monitor')
+// Required for Windows notifications — must match Start Menu shortcut
+app.setAppUserModelId(process.execPath)
 
 app.whenReady().then(async () => {
   // Auto-start with Windows

@@ -1,4 +1,4 @@
-import { BrowserWindow, Tray, shell } from 'electron'
+import { BrowserWindow, Notification, Tray, shell } from 'electron'
 import { KsefApiClient } from './ksef-api'
 import { getConfig, getLastCheckDate, setLastCheckDate } from './store'
 import { upsertInvoices } from './database'
@@ -104,13 +104,16 @@ export class InvoiceScheduler {
       this.mainWindow.webContents.send('new-invoices', invoices)
     }
 
-    // Tray balloon notification
+    const title = 'KSeF Monitor - Nowe faktury'
+    const body = `Znaleziono ${invoices.length} nowych faktur`
+
+    // Native Windows toast notification
+    if (Notification.isSupported()) {
+      new Notification({ title, body, silent: false }).show()
+    }
+    // Tray balloon as backup
     if (this.tray) {
-      this.tray.displayBalloon({
-        title: 'KSeF Monitor - Nowe faktury',
-        content: `Znaleziono ${invoices.length} nowych faktur`,
-        iconType: 'info'
-      })
+      this.tray.displayBalloon({ title, content: body, iconType: 'info' })
     }
     shell.beep()
   }
