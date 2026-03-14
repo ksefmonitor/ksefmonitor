@@ -201,7 +201,9 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
-  scheduler.setMainWindow(mainWindow)
+  if (scheduler) {
+    scheduler.setMainWindow(mainWindow)
+  }
 }
 
 function setupIpcHandlers(): void {
