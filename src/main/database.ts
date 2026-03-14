@@ -2,6 +2,7 @@ import type { Database as SqlJsDatabase } from 'sql.js'
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { encryptBuffer, decryptBuffer } from './crypto'
 import type { InvoiceMetadata } from '../shared/types'
 
 let db: SqlJsDatabase | null = null
@@ -17,8 +18,10 @@ function getDbPath(): string {
 function saveToFile(): void {
   if (!db) return
   const data = db.export()
-  const buffer = Buffer.from(data)
-  fs.writeFileSync(getDbPath(), buffer)
+  const rawBuffer = Buffer.from(data)
+  // Encrypt before writing to disk
+  const encrypted = encryptBuffer(rawBuffer)
+  fs.writeFileSync(getDbPath(), encrypted)
 }
 
 export async function initDatabase(): Promise<void> {
@@ -29,7 +32,9 @@ export async function initDatabase(): Promise<void> {
 
   if (fs.existsSync(filePath)) {
     const fileBuffer = fs.readFileSync(filePath)
-    db = new SQL.Database(fileBuffer)
+    // Decrypt if encrypted, pass through if legacy unencrypted
+    const decrypted = decryptBuffer(fileBuffer)
+    db = new SQL.Database(decrypted)
   } else {
     db = new SQL.Database()
   }

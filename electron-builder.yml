@@ -7,8 +7,6 @@ files:
   - dist/**/*
   - "!node_modules/**/*"
   - node_modules/sql.js/**/*
-  - node_modules/yazl/**/*
-  - node_modules/buffer-crc32/**/*
 extraResources:
   - from: resources
     to: resources

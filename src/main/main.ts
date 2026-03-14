@@ -431,94 +431,11 @@ function setupIpcHandlers(): void {
     })
     if (result.canceled || !result.filePath) return null
 
-    // Build XLSX manually (simple XML-based xlsx)
-    const fs = await import('fs/promises')
-    const path = await import('path')
-
-    const escXml = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const formatNum = (n: number) => n.toFixed(2)
-
-    let rows = ''
-    // Header row
-    rows += '<row r="1">'
-    const headers = ['Nr faktury', 'Nr KSeF', 'Data wystawienia', 'Sprzedawca', 'NIP sprzedawcy', 'Nabywca', 'NIP nabywcy', 'Netto', 'VAT', 'Brutto', 'Waluta', 'Status']
-    headers.forEach((h, i) => {
-      const col = String.fromCharCode(65 + i)
-      rows += `<c r="${col}1" t="inlineStr"><is><t>${escXml(h)}</t></is></c>`
-    })
-    rows += '</row>'
-
-    // Data rows
-    invoices.forEach((inv, idx) => {
-      const r = idx + 2
-      const vals = [
-        inv.invoiceNumber, inv.ksefNumber, inv.issueDate,
-        inv.seller?.name, inv.seller?.nip,
-        inv.buyer?.name, inv.buyer?.identifier?.value,
-        formatNum(inv.netAmount || 0), formatNum(inv.vatAmount || 0), formatNum(inv.grossAmount || 0),
-        inv.currency || 'PLN', inv.status || 'nowy'
-      ]
-      rows += `<row r="${r}">`
-      vals.forEach((v, i) => {
-        const col = String.fromCharCode(65 + i)
-        // Numbers for columns H, I, J (indices 7, 8, 9)
-        if (i >= 7 && i <= 9) {
-          rows += `<c r="${col}${r}"><v>${v}</v></c>`
-        } else {
-          rows += `<c r="${col}${r}" t="inlineStr"><is><t>${escXml(String(v || ''))}</t></is></c>`
-        }
-      })
-      rows += '</row>'
-    })
-
-    const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData>${rows}</sheetData>
-</worksheet>`
-
-    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-</Types>`
-
-    const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`
-
-    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="Faktury" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`
-
-    const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-</Relationships>`
-
-    // Create xlsx (zip) using yazl (lightweight zip library)
     try {
-      const yazl = require('yazl')
-      const { createWriteStream } = require('fs')
-
-      const zipfile = new yazl.ZipFile()
-      zipfile.addBuffer(Buffer.from(contentTypes, 'utf-8'), '[Content_Types].xml')
-      zipfile.addBuffer(Buffer.from(rels, 'utf-8'), '_rels/.rels')
-      zipfile.addBuffer(Buffer.from(workbook, 'utf-8'), 'xl/workbook.xml')
-      zipfile.addBuffer(Buffer.from(wbRels, 'utf-8'), 'xl/_rels/workbook.xml.rels')
-      zipfile.addBuffer(Buffer.from(sheetXml, 'utf-8'), 'xl/worksheets/sheet1.xml')
-      zipfile.end()
-
-      await new Promise<void>((resolve, reject) => {
-        const output = createWriteStream(result.filePath!)
-        output.on('close', resolve)
-        output.on('error', reject)
-        zipfile.outputStream.pipe(output)
-      })
-
+      const { buildXlsx } = await import('./xlsx-builder')
+      const xlsxBuffer = buildXlsx(invoices)
+      const fsSync = await import('fs')
+      fsSync.writeFileSync(result.filePath!, xlsxBuffer)
       appLog.info(`Exported ${invoices.length} invoices to ${result.filePath}`)
       return result.filePath
     } catch (err: any) {
