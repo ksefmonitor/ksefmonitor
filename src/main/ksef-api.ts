@@ -444,9 +444,7 @@ export class KsefApiClient {
         digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256'
       })
 
-      sig.computeSignature(xml, {
-        location: { reference: '//*[local-name()="AuthTokenRequest"]', action: 'append' }
-      })
+      sig.computeSignature(xml)
 
       return sig.getSignedXml()
     } catch (err: any) {
