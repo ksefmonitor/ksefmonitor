@@ -3,7 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import { KsefApiClient } from './ksef-api'
 import { InvoiceScheduler } from './scheduler'
-import { getConfig, saveConfig } from './store'
+import { getConfig, saveConfig, hasAppPin, verifyAppPin, setAppPin } from './store'
 import {
   initDatabase, upsertInvoices, saveInvoiceXmlToDb, getInvoiceXmlFromDb,
   queryLocalInvoices, getLocalStats, getSyncState, setSyncState, closeDatabase,
@@ -413,6 +413,10 @@ function setupIpcHandlers(): void {
     await dbReady
     updateInvoiceStatus(ksefNumber, status)
   })
+
+  ipcMain.handle('has-app-pin', () => hasAppPin())
+  ipcMain.handle('verify-pin', (_event, pin: string) => verifyAppPin(pin))
+  ipcMain.handle('set-app-pin', (_event, pin: string) => setAppPin(pin))
 
   ipcMain.handle('update-invoice-status-bulk', async (_event, ksefNumbers: string[], status: string) => {
     await dbReady

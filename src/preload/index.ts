@@ -82,6 +82,10 @@ const api = {
   updateInvoiceStatusBulk: (ksefNumbers: string[], status: string): Promise<void> =>
     ipcRenderer.invoke('update-invoice-status-bulk', ksefNumbers, status),
 
+  hasAppPin: (): Promise<boolean> => ipcRenderer.invoke('has-app-pin'),
+  verifyPin: (pin: string): Promise<boolean> => ipcRenderer.invoke('verify-pin', pin),
+  setAppPin: (pin: string): Promise<void> => ipcRenderer.invoke('set-app-pin', pin),
+
   exportInvoicesXlsx: (invoices: InvoiceMetadata[]): Promise<string | null> =>
     ipcRenderer.invoke('export-invoices-xlsx', invoices),
 

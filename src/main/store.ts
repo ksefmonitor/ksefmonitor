@@ -1,10 +1,12 @@
 import Store from 'electron-store'
 import { AppConfig, DEFAULT_CONFIG, extractNipFromToken } from '../shared/types'
+import { encryptString, decryptString } from './crypto'
 
-const store = new Store<{ config: AppConfig; lastCheckDate: string }>({
+const store = new Store<{ config: AppConfig; lastCheckDate: string; appPin: string }>({
   defaults: {
     config: DEFAULT_CONFIG,
-    lastCheckDate: new Date().toISOString()
+    lastCheckDate: new Date().toISOString(),
+    appPin: ''
   }
 })
 
@@ -24,21 +26,72 @@ function migrateConfig(config: AppConfig): AppConfig {
     delete config.nip
     store.set('config', config)
   }
-  // Ensure companies array exists
   if (!config.companies) {
     config.companies = []
     config.activeCompanyIndex = 0
   }
+  if (!config.integrations) {
+    config.integrations = []
+  }
   return config
 }
 
+/** Decrypt all sensitive fields before returning config to renderer */
+function decryptConfig(config: AppConfig): AppConfig {
+  const decrypted = { ...config }
+
+  // Decrypt company tokens
+  decrypted.companies = config.companies.map(c => ({
+    ...c,
+    token: decryptString(c.token)
+  }))
+
+  // Decrypt integration passwords
+  decrypted.integrations = (config.integrations || []).map(i => {
+    const settings = { ...i.settings }
+    if (settings.password) settings.password = decryptString(settings.password)
+    if (settings.secret) settings.secret = decryptString(settings.secret)
+    return { ...i, settings }
+  })
+
+  return decrypted
+}
+
+/** Encrypt sensitive fields before saving config */
+function encryptConfig(config: AppConfig): AppConfig {
+  const encrypted = { ...config }
+
+  // Encrypt company tokens
+  encrypted.companies = config.companies.map(c => ({
+    ...c,
+    token: encryptString(c.token)
+  }))
+
+  // Encrypt integration passwords
+  encrypted.integrations = (config.integrations || []).map(i => {
+    const settings = { ...i.settings }
+    if (settings.password) settings.password = encryptString(settings.password)
+    if (settings.secret) settings.secret = encryptString(settings.secret)
+    return { ...i, settings }
+  })
+
+  return encrypted
+}
+
 export function getConfig(): AppConfig {
-  const config = store.get('config')
-  return migrateConfig(config)
+  const raw = store.get('config')
+  const migrated = migrateConfig(raw)
+  return decryptConfig(migrated)
+}
+
+/** Returns config with encrypted tokens for internal use (ksef-api needs decrypted token) */
+export function getRawConfig(): AppConfig {
+  const raw = store.get('config')
+  return migrateConfig(raw)
 }
 
 export function saveConfig(config: AppConfig): void {
-  store.set('config', config)
+  store.set('config', encryptConfig(config))
 }
 
 export function getLastCheckDate(): string {
@@ -47,6 +100,25 @@ export function getLastCheckDate(): string {
 
 export function setLastCheckDate(date: string): void {
   store.set('lastCheckDate', date)
+}
+
+// PIN management
+export function getAppPin(): string {
+  const pin = store.get('appPin')
+  return pin ? decryptString(pin) : ''
+}
+
+export function setAppPin(pin: string): void {
+  store.set('appPin', pin ? encryptString(pin) : '')
+}
+
+export function hasAppPin(): boolean {
+  return !!store.get('appPin')
+}
+
+export function verifyAppPin(input: string): boolean {
+  const stored = getAppPin()
+  return stored === input
 }
 
 export { store }

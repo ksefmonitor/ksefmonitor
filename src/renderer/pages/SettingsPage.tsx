@@ -30,6 +30,7 @@ import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
 import SystemUpdateRoundedIcon from '@mui/icons-material/SystemUpdateRounded'
 import SecurityRoundedIcon from '@mui/icons-material/SecurityRounded'
+import LockRoundedIcon from '@mui/icons-material/LockRounded'
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
 import AddBusinessRoundedIcon from '@mui/icons-material/AddBusinessRounded'
 import DeleteRoundedIcon from '@mui/icons-material/DeleteRounded'
@@ -56,9 +57,16 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
   // Per-company token visibility
   const [visibleTokens, setVisibleTokens] = useState<Record<number, boolean>>({})
 
+  // PIN
+  const [hasPin, setHasPin] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinConfirm, setPinConfirm] = useState('')
+  const [pinSaved, setPinSaved] = useState(false)
+
   useEffect(() => {
     window.api.getConfig().then(setConfig)
     window.api.getAppVersion().then(setAppVersion)
+    window.api.hasAppPin().then(setHasPin)
   }, [])
 
   async function handleSave() {
@@ -538,6 +546,69 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
           <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
             Wyślij testowe powiadomienie systemowe z dźwiękiem
           </Typography>
+        </CardContent>
+      </Card>
+
+      {/* PIN lock */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <LockRoundedIcon sx={{ color: 'primary.main' }} />
+            <Typography variant="h6">Blokada PIN</Typography>
+            {hasPin && <Chip label="Aktywna" size="small" color="success" />}
+          </Box>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            {hasPin
+              ? 'Aplikacja jest chroniona kodem PIN. Tokeny i hasła są szyfrowane.'
+              : 'Ustaw PIN aby chronić dostęp do aplikacji. Tokeny i hasła zostaną zaszyfrowane.'}
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+            <TextField
+              label={hasPin ? 'Nowy PIN (zostaw puste aby usunąć)' : 'Ustaw PIN'}
+              type="password"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              size="small"
+              sx={{ width: 200 }}
+              placeholder={hasPin ? '(nowy PIN)' : '4-8 znaków'}
+            />
+            {pinInput && (
+              <TextField
+                label="Potwierdź PIN"
+                type="password"
+                value={pinConfirm}
+                onChange={(e) => setPinConfirm(e.target.value)}
+                size="small"
+                sx={{ width: 200 }}
+                error={!!pinConfirm && pinInput !== pinConfirm}
+                helperText={pinConfirm && pinInput !== pinConfirm ? 'PIN się nie zgadza' : ''}
+              />
+            )}
+            <Button
+              variant="outlined"
+              onClick={async () => {
+                if (pinInput && pinInput !== pinConfirm) {
+                  setError('PIN się nie zgadza')
+                  return
+                }
+                await window.api.setAppPin(pinInput)
+                setHasPin(!!pinInput)
+                setPinInput('')
+                setPinConfirm('')
+                setPinSaved(true)
+                setTimeout(() => setPinSaved(false), 3000)
+              }}
+              disabled={pinInput ? pinInput !== pinConfirm || pinInput.length < 4 : !hasPin}
+            >
+              {hasPin && !pinInput ? 'Usuń PIN' : 'Zapisz PIN'}
+            </Button>
+          </Box>
+          {pinSaved && (
+            <Typography variant="body2" sx={{ mt: 1, color: 'success.main', fontWeight: 500 }}>
+              {hasPin ? 'PIN został ustawiony' : 'PIN został usunięty'}
+            </Typography>
+          )}
         </CardContent>
       </Card>
 

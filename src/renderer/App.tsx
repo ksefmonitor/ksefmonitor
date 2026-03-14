@@ -3,6 +3,7 @@ import { ThemeProvider, CssBaseline, Box, Snackbar, Alert, Button } from '@mui/m
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { darkTheme, lightTheme } from './theme'
 import { Sidebar } from './components/Sidebar'
+import { LockScreen } from './components/LockScreen'
 import { InvoicesPage } from './pages/InvoicesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
@@ -12,13 +13,19 @@ import type { AppConfig, InvoiceMetadata } from '../shared/types'
 
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
+  const [locked, setLocked] = useState<boolean | null>(null) // null = checking
   const [newInvoicesCount, setNewInvoicesCount] = useState(0)
   const [notification, setNotification] = useState<string | null>(null)
   const [updateInfo, setUpdateInfo] = useState<{ version: string; downloaded: boolean } | null>(null)
 
   useEffect(() => {
-    window.api.getConfig().then((config: AppConfig) => {
+    // Check if PIN is set — if yes, show lock screen
+    Promise.all([
+      window.api.hasAppPin(),
+      window.api.getConfig()
+    ]).then(([hasPin, config]) => {
       setTheme(config.theme || 'dark')
+      setLocked(hasPin)
     })
   }, [])
 
@@ -46,6 +53,26 @@ export default function App() {
   const handleThemeChange = useCallback((newTheme: 'light' | 'dark') => {
     setTheme(newTheme)
   }, [])
+
+  // Still checking PIN status
+  if (locked === null) {
+    return (
+      <ThemeProvider theme={theme === 'dark' ? darkTheme : lightTheme}>
+        <CssBaseline />
+        <Box sx={{ height: '100vh', background: (t) => t.palette.background.default }} />
+      </ThemeProvider>
+    )
+  }
+
+  // Locked — show PIN screen
+  if (locked) {
+    return (
+      <ThemeProvider theme={theme === 'dark' ? darkTheme : lightTheme}>
+        <CssBaseline />
+        <LockScreen onUnlock={() => setLocked(false)} />
+      </ThemeProvider>
+    )
+  }
 
   return (
     <ThemeProvider theme={theme === 'dark' ? darkTheme : lightTheme}>

@@ -215,6 +215,9 @@ export interface IpcApi {
   exportInvoicesXlsx: (invoices: InvoiceMetadata[]) => Promise<string | null>
   testNotification: () => Promise<void>
   updateInvoiceStatusBulk: (ksefNumbers: string[], status: string) => Promise<void>
+  hasAppPin: () => Promise<boolean>
+  verifyPin: (pin: string) => Promise<boolean>
+  setAppPin: (pin: string) => Promise<void>
 }
 
 declare global {
