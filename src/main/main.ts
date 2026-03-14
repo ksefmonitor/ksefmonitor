@@ -12,9 +12,15 @@ let apiClient: KsefApiClient
 let scheduler: InvoiceScheduler
 const isDev = !app.isPackaged
 
+function getResourcePath(filename: string): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'resources', filename)
+  }
+  return path.join(__dirname, '../../resources', filename)
+}
+
 function createTray(): void {
-  const iconPath = path.join(__dirname, '../../resources/tray-icon.png')
-  const icon = nativeImage.createFromPath(iconPath)
+  const icon = nativeImage.createFromPath(getResourcePath('tray-icon.png'))
 
   tray = new Tray(icon.resize({ width: 16, height: 16 }))
   tray.setToolTip('KSeF Monitor')
@@ -95,7 +101,7 @@ function showMainWindow(): void {
 }
 
 function createWindow(): void {
-  const appIconPath = path.join(__dirname, '../../resources/icon.ico')
+  const appIconPath = getResourcePath('icon.ico')
 
   mainWindow = new BrowserWindow({
     width: 1400,

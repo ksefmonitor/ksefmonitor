@@ -15,16 +15,25 @@ interface PublicKeyCertificate {
 interface ChallengeResponse {
   challenge: string
   timestamp: string
+  timestampMs: number
 }
 
 interface KsefTokenAuthResponse {
   referenceNumber: string
-  authenticationToken: string
+  authenticationToken: {
+    token: string
+    validUntil: string
+  }
 }
 
 interface AuthStatusResponse {
-  processingCode: number
-  processingDescription: string
+  startDate: string
+  authenticationMethod: string
+  status: {
+    code: number
+    description: string
+    details?: string[]
+  }
 }
 
 interface TokenRedeemResponse {
@@ -241,10 +250,10 @@ export class KsefApiClient {
     )
 
     // Step 6: Poll until auth is processed
-    await this.pollAuthStatus(referenceNumber, authenticationToken)
+    await this.pollAuthStatus(referenceNumber, authenticationToken.token)
 
     // Step 7: Redeem token
-    const tokens = await this.redeemToken(authenticationToken)
+    const tokens = await this.redeemToken(authenticationToken.token)
 
     // Step 8: Store tokens
     this.accessToken = tokens.accessToken.token
@@ -301,27 +310,25 @@ export class KsefApiClient {
   }
 
   /** Step 2: Request a challenge from KSeF */
-  private async fetchChallenge(): Promise<{ challenge: string; timestampMs: string }> {
+  private async fetchChallenge(): Promise<{ challenge: string; timestampMs: number }> {
     log.info('Requesting auth challenge...')
     const url = `${this.baseUrl}/auth/challenge`
-    const result = await this.rawRequest<ChallengeResponse>('POST', url, {
-      contextNip: this.config.nip
-    })
+    const result = await this.rawRequest<ChallengeResponse>('POST', url)
 
     if (result.statusCode < 200 || result.statusCode >= 300) {
       throw new Error(`Failed to get auth challenge: ${result.raw}`)
     }
 
-    const { challenge, timestamp } = result.data
+    const { challenge, timestampMs } = result.data
     log.info('Challenge received:', challenge.substring(0, 16) + '...')
 
-    return { challenge, timestampMs: timestamp }
+    return { challenge, timestampMs }
   }
 
   /** Step 3: Encrypt "{ksefToken}|{timestampMs}" using RSA-OAEP with SHA-256 */
   private encryptToken(
     ksefToken: string,
-    timestampMs: string,
+    timestampMs: number,
     publicKey: crypto.KeyObject
   ): string {
     const plaintext = `${ksefToken}|${timestampMs}`
@@ -376,20 +383,30 @@ export class KsefApiClient {
         Authorization: `Bearer ${authenticationToken}`
       })
 
-      if (result.statusCode === 200) {
-        log.info('Auth processing complete after', attempt, 'poll(s)')
-        return
-      }
-
-      if (result.statusCode === 202) {
-        // Still processing
-        log.info(`Auth still processing (attempt ${attempt}/${maxAttempts})...`)
+      if (result.statusCode >= 200 && result.statusCode < 300) {
+        const statusCode = result.data?.status?.code
+        if (statusCode === 200) {
+          log.info('Auth processing complete after', attempt, 'poll(s)')
+          return
+        }
+        if (statusCode === 100) {
+          log.info(`Auth still processing (attempt ${attempt}/${maxAttempts})...`)
+          await this.sleep(pollIntervalMs)
+          continue
+        }
+        if (statusCode && statusCode >= 400) {
+          throw new Error(
+            `Auth failed with status ${statusCode}: ${result.data?.status?.description} ${result.data?.status?.details?.join(', ') || ''}`
+          )
+        }
+        // Unknown status, keep polling
+        log.info(`Auth status code ${statusCode} (attempt ${attempt}/${maxAttempts})...`)
         await this.sleep(pollIntervalMs)
         continue
       }
 
       throw new Error(
-        `Unexpected status ${result.statusCode} while polling auth status: ${result.raw}`
+        `Unexpected HTTP status ${result.statusCode} while polling auth status: ${result.raw}`
       )
     }
 

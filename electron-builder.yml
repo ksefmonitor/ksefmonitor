@@ -5,8 +5,10 @@ directories:
   buildResources: resources
 files:
   - dist/**/*
-  - resources/**/*
   - "!node_modules/**/*"
+extraResources:
+  - from: resources
+    to: resources
 win:
   target:
     - target: nsis
