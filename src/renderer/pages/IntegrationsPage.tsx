@@ -49,13 +49,6 @@ const INTEGRATION_FIELDS: Record<string, IntegrationSettingsField[]> = {
     { key: 'database', label: 'Baza danych', type: 'text', placeholder: 'infover_prod' },
     { key: 'syncInterval', label: 'Interwał synchronizacji (min)', type: 'number', placeholder: '30' }
   ],
-  optima: [
-    { key: 'host', label: 'Adres serwera SQL', type: 'url', placeholder: '192.168.1.100\\SQLEXPRESS' },
-    { key: 'login', label: 'Login SQL', type: 'text', placeholder: 'sa' },
-    { key: 'password', label: 'Hasło SQL', type: 'password' },
-    { key: 'database', label: 'Nazwa bazy', type: 'text', placeholder: 'CDN_Optima' },
-    { key: 'companyDb', label: 'Baza firmowa', type: 'text', placeholder: 'CDN_FirmaXYZ' }
-  ],
   webhook: [
     { key: 'url', label: 'URL endpointu', type: 'url', placeholder: 'https://hooks.slack.com/services/...' },
     { key: 'secret', label: 'Secret (opcjonalny)', type: 'password' },
@@ -70,12 +63,6 @@ const INTEGRATIONS_CATALOG = [
     name: 'Infover',
     description: 'Synchronizacja faktur z systemem Infover ERP. Automatyczne przesyłanie nowych faktur i aktualizacja statusów.',
     icon: 'Storage'
-  },
-  {
-    id: 'optima',
-    name: 'Comarch Optima',
-    description: 'Integracja z Comarch ERP Optima. Import faktur zakupowych i sprzedażowych.',
-    icon: 'AccountBalance'
   },
   {
     id: 'webhook',

@@ -47,7 +47,6 @@ Od 2026 roku Krajowy System e-Faktur jest obowiązkowy dla wszystkich podatnikó
 
 ### Integracje (framework pluginów)
 - **Infover ERP** — konfiguracja połączenia (adres, login, hasło, baza danych)
-- **Comarch Optima** — konfiguracja serwera SQL i baz danych
 - **Webhook** — powiadomienia HTTP o nowych fakturach (Slack, Teams, własny endpoint)
 - Każda integracja: włącz/wyłącz, auto-sync, niezależna konfiguracja
 

@@ -165,13 +165,6 @@ export const AVAILABLE_INTEGRATIONS: Omit<IntegrationConfig, 'enabled' | 'syncEn
     settings: {}
   },
   {
-    id: 'optima',
-    name: 'Comarch Optima',
-    description: 'Integracja z Comarch ERP Optima. Import faktur zakupowych i sprzedażowych.',
-    icon: 'AccountBalance',
-    settings: {}
-  },
-  {
     id: 'webhook',
     name: 'Webhook',
     description: 'Wysyłaj powiadomienia o nowych fakturach na dowolny endpoint HTTP (Slack, Teams, własny serwer).',
