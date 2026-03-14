@@ -20,5 +20,5 @@ nsis:
   createStartMenuShortcut: true
 publish:
   provider: github
-  owner: kwarpechowski
-  repo: ksef-monitor
+  owner: ksefmonitor
+  repo: ksefmonitor
