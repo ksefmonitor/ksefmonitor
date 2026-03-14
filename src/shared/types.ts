@@ -143,6 +143,15 @@ export interface InvoiceSummary {
 }
 
 // IPC Channel types
+export interface LocalStats {
+  count: number
+  totalNet: number
+  totalGross: number
+  totalVat: number
+  oldestDate: string
+  newestDate: string
+}
+
 export interface IpcApi {
   getAppVersion: () => Promise<string>
   getConfig: () => Promise<AppConfig>
@@ -154,11 +163,16 @@ export interface IpcApi {
   getAutoCheckStatus: () => Promise<boolean>
   checkForUpdates: () => Promise<void>
   getAppLogs: () => Promise<LogEntry[]>
+  queryLocalInvoices: (params: any) => Promise<{ invoices: InvoiceMetadata[]; total: number }>
+  getLocalStats: () => Promise<LocalStats>
+  syncInvoices: (dateFrom: string) => Promise<{ totalSynced: number }>
   onNewInvoices: (callback: (invoices: InvoiceMetadata[]) => void) => () => void
   onNewLog: (callback: (entry: LogEntry) => void) => () => void
+  onSyncProgress: (callback: (progress: { synced: number; subjectType: string }) => void) => () => void
   onUpdateAvailable: (callback: (info: { version: string }) => void) => () => void
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void
   installUpdate: () => void
+  saveInvoiceXml: (ksefNumber: string, xmlContent: string) => Promise<string | null>
 }
 
 declare global {

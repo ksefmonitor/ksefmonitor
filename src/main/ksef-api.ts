@@ -500,17 +500,44 @@ export class KsefApiClient {
   }
 
   async checkNewInvoices(since: string): Promise<QueryInvoicesMetadataResponse> {
-    const filters: InvoiceQueryFilters = {
-      subjectType: 'Subject1',
-      dateRange: {
-        dateType: 'PermanentStorage',
-        from: since,
-        to: new Date().toISOString()
-      },
-      sortOrder: 'Desc',
-      pageSize: 100,
-      pageOffset: 0
+    const dateRange = {
+      dateType: 'PermanentStorage' as const,
+      from: since,
+      to: new Date().toISOString()
     }
-    return this.queryInvoices(filters)
+
+    // Query both as seller (Subject1) and buyer (Subject2)
+    const [sellerRes, buyerRes] = await Promise.all([
+      this.queryInvoices({
+        subjectType: 'Subject1',
+        dateRange,
+        sortOrder: 'Desc',
+        pageSize: 100,
+        pageOffset: 0
+      }),
+      this.queryInvoices({
+        subjectType: 'Subject2',
+        dateRange,
+        sortOrder: 'Desc',
+        pageSize: 100,
+        pageOffset: 0
+      })
+    ])
+
+    // Merge and deduplicate
+    const allInvoices = [...(sellerRes.invoices || []), ...(buyerRes.invoices || [])]
+    const seen = new Set<string>()
+    const unique = allInvoices.filter((inv) => {
+      if (seen.has(inv.ksefNumber)) return false
+      seen.add(inv.ksefNumber)
+      return true
+    })
+
+    return {
+      invoices: unique,
+      hasMore: sellerRes.hasMore || buyerRes.hasMore,
+      isTruncated: sellerRes.isTruncated || buyerRes.isTruncated,
+      permanentStorageHwmDate: sellerRes.permanentStorageHwmDate || buyerRes.permanentStorageHwmDate
+    }
   }
 }

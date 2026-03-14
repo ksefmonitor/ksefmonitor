@@ -33,6 +33,23 @@ const api = {
 
   getAppLogs: (): Promise<LogEntry[]> => ipcRenderer.invoke('get-app-logs'),
 
+  queryLocalInvoices: (params: any): Promise<{ invoices: InvoiceMetadata[]; total: number }> =>
+    ipcRenderer.invoke('query-local-invoices', params),
+
+  getLocalStats: (): Promise<{ count: number; totalNet: number; totalGross: number; totalVat: number; oldestDate: string; newestDate: string }> =>
+    ipcRenderer.invoke('get-local-stats'),
+
+  syncInvoices: (dateFrom: string): Promise<{ totalSynced: number }> =>
+    ipcRenderer.invoke('sync-invoices', dateFrom),
+
+  onSyncProgress: (callback: (progress: { synced: number; subjectType: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: { synced: number; subjectType: string }) => {
+      callback(progress)
+    }
+    ipcRenderer.on('sync-progress', handler)
+    return () => ipcRenderer.removeListener('sync-progress', handler)
+  },
+
   onNewInvoices: (callback: (invoices: InvoiceMetadata[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, invoices: InvoiceMetadata[]) => {
       callback(invoices)

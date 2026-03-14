@@ -4,7 +4,11 @@ import path from 'path'
 import { KsefApiClient } from './ksef-api'
 import { InvoiceScheduler } from './scheduler'
 import { getConfig, saveConfig } from './store'
-import type { AppConfig, InvoiceQueryFilters, LogEntry } from '../shared/types'
+import {
+  initDatabase, upsertInvoices, saveInvoiceXmlToDb, getInvoiceXmlFromDb,
+  queryLocalInvoices, getLocalStats, getSyncState, setSyncState, closeDatabase
+} from './database'
+import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata, LogEntry, SubjectType } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -231,11 +235,86 @@ function setupIpcHandlers(): void {
     if (!activeCompany?.token) {
       return { invoices: [], hasMore: false, isTruncated: false, permanentStorageHwmDate: '' }
     }
-    return apiClient.queryInvoices(filters)
+    const response = await apiClient.queryInvoices(filters)
+    // Save to local DB
+    if (response.invoices?.length > 0) {
+      upsertInvoices(response.invoices, filters.subjectType)
+      appLog.info(`Saved ${response.invoices.length} invoices to local DB`)
+    }
+    return response
   })
 
   ipcMain.handle('download-invoice', async (_event, ksefNumber: string) => {
-    return apiClient.downloadInvoice(ksefNumber)
+    // Try local cache first
+    const cached = getInvoiceXmlFromDb(ksefNumber)
+    if (cached) {
+      appLog.info(`Serving XML from local cache: ${ksefNumber}`)
+      return cached
+    }
+    const xml = await apiClient.downloadInvoice(ksefNumber)
+    saveInvoiceXmlToDb(ksefNumber, xml)
+    return xml
+  })
+
+  ipcMain.handle('query-local-invoices', (_event, params: any) => {
+    return queryLocalInvoices(params)
+  })
+
+  ipcMain.handle('get-local-stats', () => {
+    return getLocalStats()
+  })
+
+  ipcMain.handle('sync-invoices', async (_event, dateFrom: string) => {
+    const config = getConfig()
+    const activeCompany = config.companies[config.activeCompanyIndex]
+    if (!activeCompany?.token) {
+      throw new Error('Brak skonfigurowanego tokenu')
+    }
+
+    appLog.info(`Starting full sync from ${dateFrom}...`)
+    let totalSynced = 0
+    const dateTo = new Date().toISOString()
+
+    for (const subjectType of ['Subject1', 'Subject2'] as SubjectType[]) {
+      let pageOffset = 0
+      const pageSize = 100
+      let hasMore = true
+
+      while (hasMore) {
+        const response = await apiClient.queryInvoices({
+          subjectType,
+          dateRange: {
+            dateType: 'PermanentStorage',
+            from: dateFrom,
+            to: dateTo
+          },
+          sortOrder: 'Desc',
+          pageSize,
+          pageOffset
+        })
+
+        const invoices = response.invoices || []
+        if (invoices.length > 0) {
+          upsertInvoices(invoices, subjectType)
+          totalSynced += invoices.length
+          appLog.info(`Synced ${invoices.length} invoices (${subjectType}, page ${pageOffset / pageSize + 1}), total: ${totalSynced}`)
+
+          // Notify renderer of progress
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('sync-progress', { synced: totalSynced, subjectType })
+          }
+        }
+
+        hasMore = response.hasMore && invoices.length === pageSize
+        pageOffset += pageSize
+      }
+    }
+
+    setSyncState('lastFullSync', new Date().toISOString())
+    setSyncState('syncFrom', dateFrom)
+    appLog.info(`Full sync complete. Total invoices synced: ${totalSynced}`)
+
+    return { totalSynced }
   })
 
   ipcMain.handle('start-auto-check', () => {
@@ -339,8 +418,9 @@ declare module 'electron' {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const config = getConfig()
+  await initDatabase() // Initialize SQLite (sql.js WASM)
   apiClient = new KsefApiClient(config, appLog)
   scheduler = new InvoiceScheduler(apiClient)
 
@@ -369,6 +449,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   app.isQuitting = true
+  closeDatabase()
 })
 
 app.on('window-all-closed', () => {

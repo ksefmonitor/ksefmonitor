@@ -11,17 +11,20 @@ import {
   IconButton,
   Tooltip,
   Alert,
-  Button
+  Button,
+  LinearProgress
 } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded'
 import AccountBalanceRoundedIcon from '@mui/icons-material/AccountBalanceRounded'
+import CloudSyncRoundedIcon from '@mui/icons-material/CloudSyncRounded'
 import SyncRoundedIcon from '@mui/icons-material/SyncRounded'
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded'
 import StopRoundedIcon from '@mui/icons-material/StopRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
-import type { AppConfig, InvoiceMetadata } from '../../shared/types'
+import StorageRoundedIcon from '@mui/icons-material/StorageRounded'
+import type { AppConfig, InvoiceMetadata, LocalStats } from '../../shared/types'
 
 interface StatCardProps {
   title: string
@@ -81,9 +84,16 @@ export function DashboardPage() {
   const [hasToken, setHasToken] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState({ totalNet: 0, totalGross: 0, totalVat: 0, count: 0 })
+  const [localStats, setLocalStats] = useState<LocalStats | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState(0)
 
   useEffect(() => {
     loadDashboard()
+    const unsub = window.api.onSyncProgress((progress) => {
+      setSyncProgress(progress.synced)
+    })
+    return () => unsub()
   }, [])
 
   async function loadDashboard() {
@@ -102,34 +112,93 @@ export function DashboardPage() {
       }
       setHasToken(true)
 
-      const now = new Date()
-      const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
+      // Always load local DB stats first
+      try {
+        const ls = await window.api.getLocalStats()
+        setLocalStats(ls)
+        // Show local data on cards immediately
+        if (ls.count > 0) {
+          setStats({ count: ls.count, totalNet: ls.totalNet, totalGross: ls.totalGross, totalVat: ls.totalVat })
+          const localData = await window.api.queryLocalInvoices({ sortOrder: 'Desc', pageSize: 10, pageOffset: 0 })
+          setRecentInvoices(localData.invoices)
+        }
+      } catch { /* DB not ready yet */ }
 
-      const response = await window.api.queryInvoices({
-        subjectType: 'Subject1',
-        dateRange: {
-          dateType: 'PermanentStorage',
-          from: monthAgo.toISOString(),
+      // Then try to fetch fresh data from API
+      try {
+        const now = new Date()
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
+
+        const dateRange = {
+          dateType: 'PermanentStorage' as const,
+          from: threeMonthsAgo.toISOString(),
           to: now.toISOString()
-        },
-        sortOrder: 'Desc',
-        pageSize: 10,
-        pageOffset: 0
-      })
+        }
 
-      const invoices = response.invoices || []
-      setRecentInvoices(invoices)
-      setStats({
-        count: invoices.length,
-        totalNet: invoices.reduce((s, i) => s + (i.netAmount || 0), 0),
-        totalGross: invoices.reduce((s, i) => s + (i.grossAmount || 0), 0),
-        totalVat: invoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
-      })
+        const [sellerRes, buyerRes] = await Promise.all([
+          window.api.queryInvoices({
+            subjectType: 'Subject1',
+            dateRange,
+            sortOrder: 'Desc',
+            pageSize: 50,
+            pageOffset: 0
+          }),
+          window.api.queryInvoices({
+            subjectType: 'Subject2',
+            dateRange,
+            sortOrder: 'Desc',
+            pageSize: 50,
+            pageOffset: 0
+          })
+        ])
+
+        const allInvoices = [...(sellerRes.invoices || []), ...(buyerRes.invoices || [])]
+        const uniqueMap = new Map<string, InvoiceMetadata>()
+        for (const inv of allInvoices) {
+          if (!uniqueMap.has(inv.ksefNumber)) {
+            uniqueMap.set(inv.ksefNumber, inv)
+          }
+        }
+        const invoices = Array.from(uniqueMap.values())
+          .sort((a, b) => new Date(b.permanentStorageDate || b.issueDate).getTime() - new Date(a.permanentStorageDate || a.issueDate).getTime())
+
+        setRecentInvoices(invoices.slice(0, 10))
+        setStats({
+          count: invoices.length,
+          totalNet: invoices.reduce((s, i) => s + (i.netAmount || 0), 0),
+          totalGross: invoices.reduce((s, i) => s + (i.grossAmount || 0), 0),
+          totalVat: invoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
+        })
+
+        // Refresh local stats after API data was saved
+        const ls = await window.api.getLocalStats()
+        setLocalStats(ls)
+      } catch (apiErr: any) {
+        console.error('API error (using local data):', apiErr)
+        setError('Brak połączenia z API KSeF — wyświetlam dane lokalne')
+      }
     } catch (err: any) {
       console.error('Dashboard load error:', err)
-      setError(err?.message || 'Błąd połączenia z API KSeF')
+      setError(err?.message || 'Błąd ładowania dashboardu')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncProgress(0)
+    setError(null)
+    try {
+      // Sync from 1 Feb 2026 as requested
+      const result = await window.api.syncInvoices('2026-02-01T00:00:00.000Z')
+      const ls = await window.api.getLocalStats()
+      setLocalStats(ls)
+      await loadDashboard()
+    } catch (err: any) {
+      setError(err?.message || 'Błąd synchronizacji')
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -211,6 +280,41 @@ export function DashboardPage() {
         </Alert>
       )}
 
+      {/* Sync section */}
+      {!loading && hasToken && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <StorageRoundedIcon sx={{ color: 'primary.main' }} />
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    Lokalna baza: {localStats?.count || 0} faktur
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {localStats?.oldestDate
+                      ? `Od ${new Date(localStats.oldestDate).toLocaleDateString('pl-PL')} do ${new Date(localStats.newestDate).toLocaleDateString('pl-PL')}`
+                      : 'Brak danych — zsynchronizuj aby pobrać faktury'}
+                  </Typography>
+                </Box>
+              </Box>
+              <Button
+                variant="contained"
+                startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <CloudSyncRoundedIcon />}
+                onClick={handleSync}
+                disabled={syncing}
+                size="small"
+              >
+                {syncing ? `Synchronizacja... (${syncProgress})` : 'Synchronizuj od 01.02.2026'}
+              </Button>
+            </Box>
+            {syncing && (
+              <LinearProgress sx={{ mt: 1, borderRadius: 1 }} />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* API error */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
@@ -227,7 +331,7 @@ export function DashboardPage() {
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard
-                title="Faktury (ostatni miesiąc)"
+                title="Faktury (ostatnie 3 miesiące)"
                 value={stats.count}
                 icon={<ReceiptLongRoundedIcon sx={{ color: '#fff' }} />}
                 gradient="linear-gradient(135deg, #6C63FF 0%, #918AFF 100%)"
@@ -268,7 +372,7 @@ export function DashboardPage() {
               {recentInvoices.length === 0 ? (
                 <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center', py: 4 }}>
                   {hasToken
-                    ? 'Brak faktur w ostatnim miesiącu.'
+                    ? 'Brak faktur w ostatnich 3 miesiącach.'
                     : 'Skonfiguruj połączenie z API aby zobaczyć faktury.'}
                 </Typography>
               ) : (

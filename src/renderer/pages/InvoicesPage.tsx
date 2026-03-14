@@ -30,7 +30,8 @@ import type {
   InvoiceMetadata,
   InvoiceQueryFilters,
   DateType,
-  SortOrder
+  SortOrder,
+  SubjectType
 } from '../../shared/types'
 
 interface InvoicesPageProps {
@@ -56,22 +57,52 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0])
   const [dateType, setDateType] = useState<DateType>('PermanentStorage')
   const [sortOrder, setSortOrder] = useState<SortOrder>('Desc')
+  const [subjectType, setSubjectType] = useState<SubjectType>('Subject2')
   const [searchText, setSearchText] = useState('')
 
   const PAGE_SIZE = 25
 
   const [apiError, setApiError] = useState<string | null>(null)
+  const [totalCount, setTotalCount] = useState(0)
+  const [source, setSource] = useState<'api' | 'local'>('local')
 
   useEffect(() => {
     onViewed()
+    // Auto-load from local DB on mount
+    fetchLocalInvoices(1)
   }, [onViewed])
 
-  const fetchInvoices = useCallback(async (pageNum: number = 1) => {
+  const fetchLocalInvoices = useCallback(async (pageNum: number = 1) => {
+    setLoading(true)
+    setApiError(null)
+    try {
+      const result = await window.api.queryLocalInvoices({
+        subjectType,
+        dateFrom: new Date(dateFrom).toISOString(),
+        dateTo: new Date(dateTo + 'T23:59:59').toISOString(),
+        dateType,
+        sortOrder,
+        pageSize: PAGE_SIZE,
+        pageOffset: (pageNum - 1) * PAGE_SIZE
+      })
+      setInvoices(result.invoices || [])
+      setTotalCount(result.total)
+      setHasMore(result.total > pageNum * PAGE_SIZE)
+      setSource('local')
+    } catch (error: any) {
+      console.error('Error fetching local invoices:', error)
+      setApiError(error?.message || 'Błąd pobierania faktur z lokalnej bazy')
+    } finally {
+      setLoading(false)
+    }
+  }, [dateFrom, dateTo, dateType, sortOrder, subjectType])
+
+  const fetchApiInvoices = useCallback(async (pageNum: number = 1) => {
     setLoading(true)
     setApiError(null)
     try {
       const filters: InvoiceQueryFilters = {
-        subjectType: 'Subject1',
+        subjectType,
         dateRange: {
           dateType,
           from: new Date(dateFrom).toISOString(),
@@ -85,22 +116,32 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
       const response = await window.api.queryInvoices(filters)
       setInvoices(response.invoices || [])
       setHasMore(response.hasMore)
+      setSource('api')
     } catch (error: any) {
-      console.error('Error fetching invoices:', error)
-      setApiError(error?.message || 'Błąd pobierania faktur')
+      console.error('Error fetching invoices from API:', error)
+      setApiError(error?.message || 'Błąd pobierania faktur z API — wyświetlam dane lokalne')
+      // Fallback to local
+      await fetchLocalInvoices(pageNum)
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, dateType, sortOrder])
+  }, [dateFrom, dateTo, dateType, sortOrder, subjectType, fetchLocalInvoices])
 
-  // Don't auto-fetch on mount - wait for user to click "Szukaj"
   useEffect(() => {
-    if (page > 1) fetchInvoices(page)
+    if (page > 1) {
+      if (source === 'api') fetchApiInvoices(page)
+      else fetchLocalInvoices(page)
+    }
   }, [page])
 
-  function handleSearch() {
+  function handleSearchLocal() {
     setPage(1)
-    fetchInvoices(1)
+    fetchLocalInvoices(1)
+  }
+
+  function handleSearchApi() {
+    setPage(1)
+    fetchApiInvoices(1)
   }
 
   function toggleSelect(ksefNumber: string) {
@@ -191,7 +232,21 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         <Card sx={{ mb: 3 }}>
           <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
             <Grid container spacing={2} alignItems="center">
-              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+                <TextField
+                  label="Podmiot"
+                  select
+                  value={subjectType}
+                  onChange={(e) => setSubjectType(e.target.value as SubjectType)}
+                  fullWidth
+                  size="small"
+                >
+                  <MenuItem value="Subject1">Sprzedawca (wystawione)</MenuItem>
+                  <MenuItem value="Subject2">Nabywca (otrzymane)</MenuItem>
+                  <MenuItem value="Subject3">Inne</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                 <TextField
                   label="Data od"
                   type="date"
@@ -202,7 +257,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                 <TextField
                   label="Data do"
                   type="date"
@@ -213,7 +268,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                 <TextField
                   label="Typ daty"
                   select
@@ -227,7 +282,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Issue">Data wystawienia</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                 <TextField
                   label="Sortowanie"
                   select
@@ -240,15 +295,28 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Asc">Najstarsze</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, sm: 12, md: 2 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 1 }}>
                 <Button
                   variant="contained"
-                  onClick={handleSearch}
+                  onClick={handleSearchLocal}
                   fullWidth
                   startIcon={<SearchRoundedIcon />}
                   sx={{ height: 40 }}
+                  title="Szukaj w lokalnej bazie (offline)"
                 >
-                  Szukaj
+                  Lokalne
+                </Button>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={handleSearchApi}
+                  fullWidth
+                  startIcon={<RefreshRoundedIcon />}
+                  sx={{ height: 40 }}
+                  title="Pobierz z API KSeF (online)"
+                >
+                  API
                 </Button>
               </Grid>
             </Grid>
@@ -270,6 +338,15 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                 startAdornment: <SearchRoundedIcon sx={{ color: 'text.secondary', mr: 1 }} />
               }}
             />
+            <Chip
+              label={source === 'local' ? 'Dane lokalne' : 'Dane z API'}
+              color={source === 'local' ? 'default' : 'primary'}
+              size="small"
+              variant="outlined"
+            />
+            {totalCount > 0 && source === 'local' && (
+              <Chip label={`${totalCount} faktur`} size="small" variant="outlined" />
+            )}
             {selectedIds.size > 0 && (
               <Chip
                 label={`Zaznaczono: ${selectedIds.size}`}
@@ -429,7 +506,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
           {(hasMore || page > 1) && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <Pagination
-                count={hasMore ? page + 1 : page}
+                count={source === 'local' ? Math.ceil(totalCount / PAGE_SIZE) : (hasMore ? page + 1 : page)}
                 page={page}
                 onChange={(_e, p) => setPage(p)}
                 color="primary"

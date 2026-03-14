@@ -36,6 +36,7 @@
     "electron-updater": "^6.6.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.3.0"
+    "react-router-dom": "^7.3.0",
+    "sql.js": "^1.14.1"
   }
 }
