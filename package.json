@@ -1,6 +1,6 @@
 {
   "name": "ksef-monitor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "KSeF Invoice Monitor - Automatyczne monitorowanie i przeglądanie faktur z KSeF",
   "main": "./dist/main/main.js",
   "scripts": {
