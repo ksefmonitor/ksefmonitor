@@ -422,13 +422,22 @@ declare module 'electron' {
 
 app.whenReady().then(async () => {
   const config = getConfig()
-  await initDatabase() // Initialize SQLite (sql.js WASM)
   apiClient = new KsefApiClient(config, appLog)
   scheduler = new InvoiceScheduler(apiClient)
 
+  // Register IPC handlers FIRST so renderer never gets "No handler registered"
   setupIpcHandlers()
   setupAutoUpdater()
   createTray()
+
+  // Init database before creating window (but after IPC handlers are ready)
+  try {
+    await initDatabase()
+    appLog.info('Local database initialized successfully')
+  } catch (err) {
+    appLog.error('Failed to initialize database:', String(err))
+  }
+
   createWindow()
 
   // Start auto-check if enabled and active company has a token
