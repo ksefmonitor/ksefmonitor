@@ -300,8 +300,21 @@ export class KsefApiClient {
     if (!fs.existsSync(this.keyPath)) {
       throw new Error(`Plik klucza prywatnego nie istnieje: ${this.keyPath}`)
     }
-    const certPem = fs.readFileSync(this.certPath, 'utf-8')
-    const keyPem = fs.readFileSync(this.keyPath, 'utf-8')
+    // Read cert — handle both PEM and DER formats
+    const certRaw = fs.readFileSync(this.certPath)
+    let certPem: string
+    if (certRaw.toString('utf-8').trim().startsWith('-----')) {
+      certPem = certRaw.toString('utf-8')
+    } else {
+      // DER format — convert to PEM
+      const b64 = certRaw.toString('base64')
+      certPem = '-----BEGIN CERTIFICATE-----\n' +
+        b64.match(/.{1,64}/g)!.join('\n') +
+        '\n-----END CERTIFICATE-----'
+    }
+
+    // Read key as raw buffer (could be PEM or DER)
+    const keyData = fs.readFileSync(this.keyPath, 'utf-8')
 
     // Build AuthTokenRequest XML
     const authTokenXml = `<?xml version="1.0" encoding="utf-8"?>
@@ -314,7 +327,7 @@ export class KsefApiClient {
 </AuthTokenRequest>`
 
     // Sign with XAdES using the certificate and private key
-    const signedXml = this.signXmlWithCertificate(authTokenXml, certPem, keyPem, this.keyPassword)
+    const signedXml = this.signXmlWithCertificate(authTokenXml, certPem, keyData, this.keyPassword)
 
     // Send signed XML to KSeF
     const url = `${this.baseUrl}/auth/xades-signature`
@@ -357,13 +370,38 @@ export class KsefApiClient {
   }
 
   /** Sign XML document with XAdES-BES using separate cert and key files */
-  private signXmlWithCertificate(xml: string, certPem: string, keyPem: string, keyPassword: string): string {
+  private signXmlWithCertificate(xml: string, certPem: string, keyData: string, keyPassword: string): string {
     try {
-      // Decrypt private key if password-protected
-      const privateKey = crypto.createPrivateKey({
-        key: keyPem,
-        passphrase: keyPassword || undefined
-      })
+      // Try multiple key formats: PEM (PKCS8, PKCS1, EC), DER
+      let privateKey: crypto.KeyObject
+      const keyBuffer = Buffer.from(keyData)
+      const isPem = keyData.trim().startsWith('-----')
+
+      const tryFormats = isPem
+        ? [
+            { key: keyBuffer, passphrase: keyPassword || undefined },
+            { key: keyBuffer, format: 'pem' as const, passphrase: keyPassword || undefined }
+          ]
+        : [
+            { key: keyBuffer, format: 'der' as const, type: 'pkcs8' as const, passphrase: keyPassword || undefined },
+            { key: keyBuffer, format: 'der' as const, type: 'pkcs1' as const },
+            { key: keyBuffer, format: 'der' as const, type: 'sec1' as const }
+          ]
+
+      let lastError: Error | null = null
+      privateKey = null as any
+      for (const opts of tryFormats) {
+        try {
+          privateKey = crypto.createPrivateKey(opts as any)
+          break
+        } catch (e: any) {
+          lastError = e
+        }
+      }
+      if (!privateKey) {
+        throw lastError || new Error('Nie udało się odczytać klucza prywatnego')
+      }
+
       const decryptedKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
 
       // Sign with xml-crypto (enveloped XAdES-BES signature)
