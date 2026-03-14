@@ -95,11 +95,14 @@ function showMainWindow(): void {
 }
 
 function createWindow(): void {
+  const appIconPath = path.join(__dirname, '../../resources/icon.png')
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 700,
+    icon: appIconPath,
     frame: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -145,6 +148,10 @@ function createWindow(): void {
 }
 
 function setupIpcHandlers(): void {
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion()
+  })
+
   ipcMain.handle('get-config', () => {
     return getConfig()
   })

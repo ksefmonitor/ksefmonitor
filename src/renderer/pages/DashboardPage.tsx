@@ -224,7 +224,7 @@ export function DashboardPage() {
       ) : (
         <>
           <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard
                 title="Faktury (ostatni miesiąc)"
                 value={stats.count}
@@ -232,7 +232,7 @@ export function DashboardPage() {
                 gradient="linear-gradient(135deg, #6C63FF 0%, #918AFF 100%)"
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard
                 title="Wartość netto"
                 value={formatCurrency(stats.totalNet)}
@@ -240,7 +240,7 @@ export function DashboardPage() {
                 gradient="linear-gradient(135deg, #00D4AA 0%, #33DDBB 100%)"
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard
                 title="Wartość brutto"
                 value={formatCurrency(stats.totalGross)}
@@ -248,7 +248,7 @@ export function DashboardPage() {
                 gradient="linear-gradient(135deg, #FFB347 0%, #FFCC80 100%)"
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard
                 title="VAT"
                 value={formatCurrency(stats.totalVat)}

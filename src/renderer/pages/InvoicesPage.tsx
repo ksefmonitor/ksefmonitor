@@ -191,7 +191,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         <Card sx={{ mb: 3 }}>
           <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={6} md={2.5}>
+              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
                 <TextField
                   label="Data od"
                   type="date"
@@ -202,7 +202,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={2.5}>
+              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
                 <TextField
                   label="Data do"
                   type="date"
@@ -213,7 +213,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={2.5}>
+              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
                 <TextField
                   label="Typ daty"
                   select
@@ -227,7 +227,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Issue">Data wystawienia</MenuItem>
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={6} md={2.5}>
+              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
                 <TextField
                   label="Sortowanie"
                   select
@@ -240,7 +240,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Asc">Najstarsze</MenuItem>
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={12} md={2}>
+              <Grid size={{ xs: 12, sm: 12, md: 2 }}>
                 <Button
                   variant="contained"
                   onClick={handleSearch}

@@ -169,7 +169,7 @@ export function SummaryPage() {
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <TextField
                 label="Data od"
                 type="date"
@@ -180,7 +180,7 @@ export function SummaryPage() {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <TextField
                 label="Data do"
                 type="date"
@@ -191,7 +191,7 @@ export function SummaryPage() {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <TextField
                 label="Typ daty"
                 select
@@ -205,7 +205,7 @@ export function SummaryPage() {
                 <MenuItem value="Issue">Data wystawienia</MenuItem>
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Button
                 variant="contained"
                 onClick={generateSummary}
@@ -231,7 +231,7 @@ export function SummaryPage() {
         <>
           {/* Overview cards */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={6} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card>
                 <CardContent sx={{ p: 2.5, textAlign: 'center', '&:last-child': { pb: 2.5 } }}>
                   <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
@@ -243,7 +243,7 @@ export function SummaryPage() {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card>
                 <CardContent sx={{ p: 2.5, textAlign: 'center', '&:last-child': { pb: 2.5 } }}>
                   <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
@@ -255,7 +255,7 @@ export function SummaryPage() {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card>
                 <CardContent sx={{ p: 2.5, textAlign: 'center', '&:last-child': { pb: 2.5 } }}>
                   <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
@@ -267,7 +267,7 @@ export function SummaryPage() {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card>
                 <CardContent sx={{ p: 2.5, textAlign: 'center', '&:last-child': { pb: 2.5 } }}>
                   <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
@@ -390,7 +390,7 @@ export function SummaryPage() {
                 </Typography>
                 <Grid container spacing={2}>
                   {Object.entries(summary.byCurrency).map(([currency, data]) => (
-                    <Grid item xs={12} sm={6} md={4} key={currency}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={currency}>
                       <Card variant="outlined">
                         <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>

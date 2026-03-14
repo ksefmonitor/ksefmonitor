@@ -123,6 +123,7 @@ export interface InvoiceSummary {
 
 // IPC Channel types
 export interface IpcApi {
+  getAppVersion: () => Promise<string>
   getConfig: () => Promise<AppConfig>
   saveConfig: (config: AppConfig) => Promise<void>
   queryInvoices: (filters: InvoiceQueryFilters) => Promise<QueryInvoicesMetadataResponse>
