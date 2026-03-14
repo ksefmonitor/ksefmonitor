@@ -19,6 +19,7 @@ import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import ArticleRoundedIcon from '@mui/icons-material/ArticleRounded'
+import ExtensionRoundedIcon from '@mui/icons-material/ExtensionRounded'
 
 interface SidebarProps {
   newInvoicesCount: number
@@ -27,6 +28,7 @@ interface SidebarProps {
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: DashboardRoundedIcon },
   { path: '/invoices', label: 'Faktury', icon: ReceiptLongRoundedIcon, badgeKey: 'invoices' as const },
+  { path: '/integrations', label: 'Integracje', icon: ExtensionRoundedIcon },
   { path: '/logs', label: 'Logi', icon: ArticleRoundedIcon },
   { path: '/settings', label: 'Ustawienia', icon: SettingsRoundedIcon }
 ]

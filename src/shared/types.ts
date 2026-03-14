@@ -19,6 +19,7 @@ export interface AppConfig {
   checkIntervalMinutes: number
   autoCheckEnabled: boolean
   theme: 'light' | 'dark'
+  integrations: IntegrationConfig[]
   // Legacy fields kept for backward compat migration
   token?: string
   nip?: string
@@ -30,7 +31,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   activeCompanyIndex: 0,
   checkIntervalMinutes: 15,
   autoCheckEnabled: true,
-  theme: 'dark'
+  theme: 'dark',
+  integrations: []
 }
 
 export interface LogEntry {
@@ -143,6 +145,41 @@ export interface InvoiceSummary {
   dateTo: string
 }
 
+// Integrations
+export interface IntegrationConfig {
+  id: string
+  name: string
+  description: string
+  icon: string // MUI icon name
+  enabled: boolean
+  syncEnabled: boolean
+  settings: Record<string, string>
+}
+
+export const AVAILABLE_INTEGRATIONS: Omit<IntegrationConfig, 'enabled' | 'syncEnabled' | 'settings'>[] = [
+  {
+    id: 'infover',
+    name: 'Infover',
+    description: 'Synchronizacja faktur z systemem Infover ERP. Automatyczne przesyłanie nowych faktur i aktualizacja statusów.',
+    icon: 'Storage',
+    settings: {}
+  },
+  {
+    id: 'optima',
+    name: 'Comarch Optima',
+    description: 'Integracja z Comarch ERP Optima. Import faktur zakupowych i sprzedażowych.',
+    icon: 'AccountBalance',
+    settings: {}
+  },
+  {
+    id: 'webhook',
+    name: 'Webhook',
+    description: 'Wysyłaj powiadomienia o nowych fakturach na dowolny endpoint HTTP (Slack, Teams, własny serwer).',
+    icon: 'Webhook',
+    settings: {}
+  }
+]
+
 // IPC Channel types
 export interface LocalStats {
   count: number
@@ -177,6 +214,7 @@ export interface IpcApi {
   updateInvoiceStatus: (ksefNumber: string, status: string) => Promise<void>
   exportInvoicesXlsx: (invoices: InvoiceMetadata[]) => Promise<string | null>
   testNotification: () => Promise<void>
+  updateInvoiceStatusBulk: (ksefNumbers: string[], status: string) => Promise<void>
 }
 
 declare global {

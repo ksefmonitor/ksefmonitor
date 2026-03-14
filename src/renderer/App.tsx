@@ -5,6 +5,7 @@ import { darkTheme, lightTheme } from './theme'
 import { Sidebar } from './components/Sidebar'
 import { InvoicesPage } from './pages/InvoicesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { IntegrationsPage } from './pages/IntegrationsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LogsPage } from './pages/LogsPage'
 import type { AppConfig, InvoiceMetadata } from '../shared/types'
@@ -77,6 +78,7 @@ export default function App() {
                   />
                 }
               />
+              <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/logs" element={<LogsPage />} />
               <Route
                 path="/settings"

@@ -79,6 +79,9 @@ const api = {
   updateInvoiceStatus: (ksefNumber: string, status: string): Promise<void> =>
     ipcRenderer.invoke('update-invoice-status', ksefNumber, status),
 
+  updateInvoiceStatusBulk: (ksefNumbers: string[], status: string): Promise<void> =>
+    ipcRenderer.invoke('update-invoice-status-bulk', ksefNumbers, status),
+
   exportInvoicesXlsx: (invoices: InvoiceMetadata[]): Promise<string | null> =>
     ipcRenderer.invoke('export-invoices-xlsx', invoices),
 

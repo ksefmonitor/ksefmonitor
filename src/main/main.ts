@@ -7,7 +7,7 @@ import { getConfig, saveConfig } from './store'
 import {
   initDatabase, upsertInvoices, saveInvoiceXmlToDb, getInvoiceXmlFromDb,
   queryLocalInvoices, getLocalStats, getSyncState, setSyncState, closeDatabase,
-  updateInvoiceStatus
+  updateInvoiceStatus, updateInvoiceStatusBulk
 } from './database'
 import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata, LogEntry, SubjectType } from '../shared/types'
 
@@ -412,6 +412,11 @@ function setupIpcHandlers(): void {
   ipcMain.handle('update-invoice-status', async (_event, ksefNumber: string, status: string) => {
     await dbReady
     updateInvoiceStatus(ksefNumber, status)
+  })
+
+  ipcMain.handle('update-invoice-status-bulk', async (_event, ksefNumbers: string[], status: string) => {
+    await dbReady
+    updateInvoiceStatusBulk(ksefNumbers, status)
   })
 
   ipcMain.handle('export-invoices-xlsx', async (_event, invoices: InvoiceMetadata[]) => {

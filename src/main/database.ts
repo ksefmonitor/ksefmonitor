@@ -171,6 +171,21 @@ export function updateInvoiceStatus(ksefNumber: string, status: string): void {
   saveToFile()
 }
 
+export function updateInvoiceStatusBulk(ksefNumbers: string[], status: string): void {
+  const database = getDb()
+  database.run('BEGIN TRANSACTION')
+  try {
+    for (const ksefNumber of ksefNumbers) {
+      database.run('UPDATE invoices SET status = ? WHERE ksefNumber = ?', [status, ksefNumber])
+    }
+    database.run('COMMIT')
+  } catch (err) {
+    database.run('ROLLBACK')
+    throw err
+  }
+  saveToFile()
+}
+
 export function saveInvoiceXmlToDb(ksefNumber: string, xml: string): void {
   const database = getDb()
   database.run(
@@ -254,6 +269,7 @@ export interface LocalQueryParams {
   dateTo?: string
   dateType?: string
   searchText?: string
+  statusFilter?: string
   sortOrder?: 'Asc' | 'Desc'
   pageSize?: number
   pageOffset?: number
@@ -279,6 +295,11 @@ export function queryLocalInvoices(params: LocalQueryParams): { invoices: Invoic
   if (params.dateTo) {
     conditions.push(`${dateCol} <= ?`)
     values.push(params.dateTo)
+  }
+
+  if (params.statusFilter) {
+    conditions.push('status = ?')
+    values.push(params.statusFilter)
   }
 
   if (params.searchText) {

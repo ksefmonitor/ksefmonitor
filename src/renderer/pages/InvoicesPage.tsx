@@ -64,6 +64,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
   const [sortOrder, setSortOrder] = useState<SortOrder>('Desc')
   const [subjectType, setSubjectType] = useState<SubjectType>('Subject2')
   const [searchText, setSearchText] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
 
   const PAGE_SIZE = 25
 
@@ -85,6 +86,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         dateTo: new Date(dateTo + 'T23:59:59').toISOString(),
         dateType,
         searchText: searchText || undefined,
+        statusFilter: statusFilter || undefined,
         sortOrder,
         pageSize: PAGE_SIZE,
         pageOffset: (pageNum - 1) * PAGE_SIZE
@@ -125,6 +127,20 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
       setSelectedIds(new Set())
     } else {
       setSelectedIds(new Set(invoices.map((i) => i.ksefNumber)))
+    }
+  }
+
+  async function handleBulkStatusChange(newStatus: string) {
+    const ksefNumbers = Array.from(selectedIds)
+    if (ksefNumbers.length === 0) return
+    try {
+      await window.api.updateInvoiceStatusBulk(ksefNumbers, newStatus)
+      setInvoices(prev => prev.map(inv =>
+        selectedIds.has(inv.ksefNumber) ? { ...inv, status: newStatus } : inv
+      ))
+      setSelectedIds(new Set())
+    } catch (error) {
+      console.error('Bulk status update error:', error)
     }
   }
 
@@ -249,7 +265,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Issue">Data wystawienia</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 1.5 }}>
                 <TextField
                   label="Sortowanie"
                   select
@@ -262,7 +278,22 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Asc">Najstarsze</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 1.5 }}>
+                <TextField
+                  label="Status"
+                  select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  fullWidth
+                  size="small"
+                >
+                  <MenuItem value="">Wszystkie</MenuItem>
+                  <MenuItem value="nowy">Nowy</MenuItem>
+                  <MenuItem value="zsynchronizowany">Zsynchronizowany</MenuItem>
+                  <MenuItem value="zignorowany">Zignorowany</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 1 }}>
                 <Button
                   variant="contained"
                   onClick={handleSearch}
@@ -309,13 +340,17 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   />
                   <Chip label={`Netto: ${formatCurrency(sumNet)}`} size="small" variant="outlined" color="primary" />
                   <Chip label={`Brutto: ${formatCurrency(sumGross)}`} size="small" variant="outlined" color="primary" />
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={<FileDownloadRoundedIcon />}
-                    onClick={handleExportXlsx}
-                  >
+                  <Button variant="contained" size="small" startIcon={<FileDownloadRoundedIcon />} onClick={handleExportXlsx}>
                     Excel
+                  </Button>
+                  <Button variant="outlined" size="small" color="success" onClick={() => handleBulkStatusChange('zsynchronizowany')}>
+                    Zsynchronizowane
+                  </Button>
+                  <Button variant="outlined" size="small" color="warning" onClick={() => handleBulkStatusChange('zignorowany')}>
+                    Zignorowane
+                  </Button>
+                  <Button variant="outlined" size="small" onClick={() => handleBulkStatusChange('nowy')}>
+                    Nowe
                   </Button>
                 </>
               )
