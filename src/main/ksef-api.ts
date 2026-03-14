@@ -424,55 +424,73 @@ export class KsefApiClient {
         throw lastError || new Error('Nie udało się odczytać klucza prywatnego. Sprawdź hasło i format klucza.')
       }
 
-      // Sign XML manually — no xml-crypto dependency needed
-      // Enveloped XML-DSIG with RSA-SHA256
+      // Sign XML manually — enveloped XML-DSIG with RSA-SHA256
+      // Per XML-DSIG spec: digest is computed on document AFTER applying transforms
+      // Enveloped-signature transform = remove <Signature> element
+      // Since we're creating the signature, the "document without signature" = original XML
 
-      // 1. Canonicalize the XML (simple: normalize whitespace for our generated XML)
-      const canonXml = xml.trim()
+      // 1. Build the XML body without XML declaration (C14N removes it)
+      //    and without extra whitespace
+      const xmlBody = xml.replace(/<\?xml[^?]*\?>/, '').trim()
 
-      // 2. Compute digest of the document (SHA-256)
-      const digest = crypto.createHash('sha256').update(canonXml, 'utf-8').digest('base64')
+      // 2. Compute SHA-256 digest of the document body (this is what KSeF will verify)
+      const digest = crypto.createHash('sha256').update(xmlBody, 'utf-8').digest('base64')
 
-      // 3. Build SignedInfo
-      const signedInfo = `<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">` +
-        `<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>` +
-        `<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>` +
-        `<ds:Reference URI="">` +
-        `<ds:Transforms>` +
-        `<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>` +
-        `</ds:Transforms>` +
-        `<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>` +
-        `<ds:DigestValue>${digest}</ds:DigestValue>` +
-        `</ds:Reference>` +
-        `</ds:SignedInfo>`
+      // 3. Build SignedInfo (this is what we sign with the private key)
+      //    Must be canonical — no extra whitespace, consistent namespace
+      const signedInfo =
+        '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
+        '<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>' +
+        '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></SignatureMethod>' +
+        '<Reference URI="">' +
+        '<Transforms>' +
+        '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></Transform>' +
+        '<Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></Transform>' +
+        '</Transforms>' +
+        '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></DigestMethod>' +
+        '<DigestValue>' + digest + '</DigestValue>' +
+        '</Reference>' +
+        '</SignedInfo>'
 
-      // 4. Sign the SignedInfo with private key (RSA-SHA256)
+      // 4. Sign SignedInfo with RSA-SHA256
       const signer = crypto.createSign('RSA-SHA256')
       signer.update(signedInfo)
       const signatureValue = signer.sign(privateKey, 'base64')
 
-      // 5. Extract certificate base64 (strip PEM headers)
+      // 5. Extract certificate base64
       const certBase64 = certPem
         .replace(/-----BEGIN CERTIFICATE-----/g, '')
         .replace(/-----END CERTIFICATE-----/g, '')
         .replace(/\s/g, '')
 
-      // 6. Build complete Signature element
-      const signatureElement = `<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">` +
-        signedInfo +
-        `<ds:SignatureValue>${signatureValue}</ds:SignatureValue>` +
-        `<ds:KeyInfo>` +
-        `<ds:X509Data>` +
-        `<ds:X509Certificate>${certBase64}</ds:X509Certificate>` +
-        `</ds:X509Data>` +
-        `</ds:KeyInfo>` +
-        `</ds:Signature>`
+      // 6. Build Signature element with ds: prefix
+      const signatureXml =
+        '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
+        '<ds:SignedInfo>' +
+        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:CanonicalizationMethod>' +
+        '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></ds:SignatureMethod>' +
+        '<ds:Reference URI="">' +
+        '<ds:Transforms>' +
+        '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
+        '<ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:Transform>' +
+        '</ds:Transforms>' +
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
+        '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
+        '</ds:Reference>' +
+        '</ds:SignedInfo>' +
+        '<ds:SignatureValue>' + signatureValue + '</ds:SignatureValue>' +
+        '<ds:KeyInfo>' +
+        '<ds:X509Data>' +
+        '<ds:X509Certificate>' + certBase64 + '</ds:X509Certificate>' +
+        '</ds:X509Data>' +
+        '</ds:KeyInfo>' +
+        '</ds:Signature>'
 
-      // 7. Insert signature before closing tag (enveloped)
+      // 7. Insert before closing tag
       const closingTag = '</AuthTokenRequest>'
-      const signedXml = canonXml.replace(closingTag, signatureElement + closingTag)
+      const signedXml = xml.replace(closingTag, signatureXml + '\n' + closingTag)
 
-      this.log.info(`Signed XML length: ${signedXml.length}, has Signature: ${signedXml.includes('<ds:Signature')}`)
+      this.log.info(`Signed XML length: ${signedXml.length}`)
 
       return signedXml
     } catch (err: any) {
