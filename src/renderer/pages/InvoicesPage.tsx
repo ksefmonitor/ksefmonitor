@@ -23,12 +23,10 @@ import {
 } from '@mui/material'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
-import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import FilterAltRoundedIcon from '@mui/icons-material/FilterAltRounded'
 import type {
   InvoiceMetadata,
-  InvoiceQueryFilters,
   DateType,
   SortOrder,
   SubjectType
@@ -38,10 +36,15 @@ interface InvoicesPageProps {
   onViewed: () => void
 }
 
+function cleanError(err: any): string {
+  const msg = err?.message || String(err)
+  const match = msg.match(/Error invoking remote method '[^']+': (?:Error: )?(.+)/)
+  return match ? match[1] : msg
+}
+
 export function InvoicesPage({ onViewed }: InvoicesPageProps) {
   const [invoices, setInvoices] = useState<InvoiceMetadata[]>([])
   const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [previewXml, setPreviewXml] = useState<string | null>(null)
@@ -64,15 +67,13 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
 
   const [apiError, setApiError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
-  const [source, setSource] = useState<'api' | 'local'>('local')
 
   useEffect(() => {
     onViewed()
-    // Auto-load from local DB on mount
-    fetchLocalInvoices(1)
+    fetchInvoices(1)
   }, [onViewed])
 
-  const fetchLocalInvoices = useCallback(async (pageNum: number = 1) => {
+  const fetchInvoices = useCallback(async (pageNum: number = 1) => {
     setLoading(true)
     setApiError(null)
     try {
@@ -81,67 +82,28 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         dateFrom: new Date(dateFrom).toISOString(),
         dateTo: new Date(dateTo + 'T23:59:59').toISOString(),
         dateType,
+        searchText: searchText || undefined,
         sortOrder,
         pageSize: PAGE_SIZE,
         pageOffset: (pageNum - 1) * PAGE_SIZE
       })
       setInvoices(result.invoices || [])
       setTotalCount(result.total)
-      setHasMore(result.total > pageNum * PAGE_SIZE)
-      setSource('local')
     } catch (error: any) {
-      console.error('Error fetching local invoices:', error)
-      setApiError(error?.message || 'Błąd pobierania faktur z lokalnej bazy')
+      console.error('Error fetching invoices:', error)
+      setApiError(cleanError(error))
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, dateType, sortOrder, subjectType])
-
-  const fetchApiInvoices = useCallback(async (pageNum: number = 1) => {
-    setLoading(true)
-    setApiError(null)
-    try {
-      const filters: InvoiceQueryFilters = {
-        subjectType,
-        dateRange: {
-          dateType,
-          from: new Date(dateFrom).toISOString(),
-          to: new Date(dateTo + 'T23:59:59').toISOString()
-        },
-        sortOrder,
-        pageSize: PAGE_SIZE,
-        pageOffset: (pageNum - 1) * PAGE_SIZE
-      }
-
-      const response = await window.api.queryInvoices(filters)
-      setInvoices(response.invoices || [])
-      setHasMore(response.hasMore)
-      setSource('api')
-    } catch (error: any) {
-      console.error('Error fetching invoices from API:', error)
-      setApiError(error?.message || 'Błąd pobierania faktur z API — wyświetlam dane lokalne')
-      // Fallback to local
-      await fetchLocalInvoices(pageNum)
-    } finally {
-      setLoading(false)
-    }
-  }, [dateFrom, dateTo, dateType, sortOrder, subjectType, fetchLocalInvoices])
+  }, [dateFrom, dateTo, dateType, sortOrder, subjectType, searchText])
 
   useEffect(() => {
-    if (page > 1) {
-      if (source === 'api') fetchApiInvoices(page)
-      else fetchLocalInvoices(page)
-    }
+    fetchInvoices(page)
   }, [page])
 
-  function handleSearchLocal() {
+  function handleSearch() {
     setPage(1)
-    fetchLocalInvoices(1)
-  }
-
-  function handleSearchApi() {
-    setPage(1)
-    fetchApiInvoices(1)
+    fetchInvoices(1)
   }
 
   function toggleSelect(ksefNumber: string) {
@@ -167,7 +129,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
   async function handleDownload(ksefNumber: string) {
     try {
       const xml = await window.api.downloadInvoice(ksefNumber)
-      await (window.api as any).saveInvoiceXml(ksefNumber, xml)
+      await window.api.saveInvoiceXml(ksefNumber, xml)
     } catch (error) {
       console.error('Download error:', error)
     }
@@ -186,16 +148,6 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(amount)
 
-  const filteredInvoices = searchText
-    ? invoices.filter(
-        (i) =>
-          i.invoiceNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
-          i.ksefNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
-          i.seller?.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-          i.buyer?.name?.toLowerCase().includes(searchText.toLowerCase())
-      )
-    : invoices
-
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
@@ -204,7 +156,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
             Faktury
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Przeglądaj i zarządzaj fakturami z KSeF
+            Przeglądaj faktury z lokalnej bazy danych
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -215,14 +167,6 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
             size="small"
           >
             Filtry
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshRoundedIcon />}
-            onClick={() => fetchInvoices(page)}
-            size="small"
-          >
-            Odśwież
           </Button>
         </Box>
       </Box>
@@ -295,28 +239,15 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="Asc">Najstarsze</MenuItem>
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 1 }}>
+              <Grid size={{ xs: 12, sm: 6, md: 2 }}>
                 <Button
                   variant="contained"
-                  onClick={handleSearchLocal}
+                  onClick={handleSearch}
                   fullWidth
                   startIcon={<SearchRoundedIcon />}
                   sx={{ height: 40 }}
-                  title="Szukaj w lokalnej bazie (offline)"
                 >
-                  Lokalne
-                </Button>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6, md: 1 }}>
-                <Button
-                  variant="outlined"
-                  onClick={handleSearchApi}
-                  fullWidth
-                  startIcon={<RefreshRoundedIcon />}
-                  sx={{ height: 40 }}
-                  title="Pobierz z API KSeF (online)"
-                >
-                  API
+                  Szukaj
                 </Button>
               </Grid>
             </Grid>
@@ -332,19 +263,14 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
               placeholder="Szukaj po numerze, sprzedawcy, nabywcy..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               fullWidth
               size="small"
               InputProps={{
                 startAdornment: <SearchRoundedIcon sx={{ color: 'text.secondary', mr: 1 }} />
               }}
             />
-            <Chip
-              label={source === 'local' ? 'Dane lokalne' : 'Dane z API'}
-              color={source === 'local' ? 'default' : 'primary'}
-              size="small"
-              variant="outlined"
-            />
-            {totalCount > 0 && source === 'local' && (
+            {totalCount > 0 && (
               <Chip label={`${totalCount} faktur`} size="small" variant="outlined" />
             )}
             {selectedIds.size > 0 && (
@@ -358,7 +284,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         </CardContent>
       </Card>
 
-      {/* API Error */}
+      {/* Error */}
       {apiError && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
           {apiError}
@@ -411,14 +337,14 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress />
             </Box>
-          ) : filteredInvoices.length === 0 ? (
+          ) : invoices.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Brak faktur do wyświetlenia
+                Brak faktur — zsynchronizuj dane na stronie Dashboard
               </Typography>
             </Box>
           ) : (
-            filteredInvoices.map((inv) => (
+            invoices.map((inv) => (
               <Box
                 key={inv.ksefNumber}
                 sx={{
@@ -503,10 +429,10 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
           )}
 
           {/* Pagination */}
-          {(hasMore || page > 1) && (
+          {totalCount > PAGE_SIZE && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
               <Pagination
-                count={source === 'local' ? Math.ceil(totalCount / PAGE_SIZE) : (hasMore ? page + 1 : page)}
+                count={Math.ceil(totalCount / PAGE_SIZE)}
                 page={page}
                 onChange={(_e, p) => setPage(p)}
                 color="primary"
