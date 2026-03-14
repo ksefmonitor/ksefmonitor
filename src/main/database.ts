@@ -31,10 +31,19 @@ export async function initDatabase(): Promise<void> {
   const filePath = getDbPath()
 
   if (fs.existsSync(filePath)) {
-    const fileBuffer = fs.readFileSync(filePath)
-    // Decrypt if encrypted, pass through if legacy unencrypted
-    const decrypted = decryptBuffer(fileBuffer)
-    db = new SQL.Database(decrypted)
+    try {
+      const fileBuffer = fs.readFileSync(filePath)
+      const decrypted = decryptBuffer(fileBuffer)
+      db = new SQL.Database(decrypted)
+      // Quick check if DB is valid
+      db.exec('SELECT 1')
+    } catch (err) {
+      // Corrupted or unreadable DB — backup and start fresh
+      const backupPath = filePath + '.bak.' + Date.now()
+      try { fs.renameSync(filePath, backupPath) } catch { /* ignore */ }
+      console.warn('Database corrupted, created backup at', backupPath, 'starting fresh')
+      db = new SQL.Database()
+    }
   } else {
     db = new SQL.Database()
   }
