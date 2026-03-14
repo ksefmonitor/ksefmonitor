@@ -15,6 +15,7 @@ let tray: Tray | null = null
 let apiClient: KsefApiClient
 let scheduler: InvoiceScheduler
 const isDev = !app.isPackaged
+let dbReady: Promise<void>
 
 // ─── In-memory log storage ────────────────────────────────────────────────────
 const MAX_LOGS = 500
@@ -239,6 +240,7 @@ function setupIpcHandlers(): void {
     }
     const response = await apiClient.queryInvoices(filters)
     // Save to local DB
+    await dbReady
     if (response.invoices?.length > 0) {
       upsertInvoices(response.invoices, filters.subjectType)
       appLog.info(`Saved ${response.invoices.length} invoices to local DB`)
@@ -247,6 +249,7 @@ function setupIpcHandlers(): void {
   })
 
   ipcMain.handle('download-invoice', async (_event, ksefNumber: string) => {
+    await dbReady
     // Try local cache first
     const cached = getInvoiceXmlFromDb(ksefNumber)
     if (cached) {
@@ -258,15 +261,18 @@ function setupIpcHandlers(): void {
     return xml
   })
 
-  ipcMain.handle('query-local-invoices', (_event, params: any) => {
+  ipcMain.handle('query-local-invoices', async (_event, params: any) => {
+    await dbReady
     return queryLocalInvoices(params)
   })
 
-  ipcMain.handle('get-local-stats', () => {
+  ipcMain.handle('get-local-stats', async () => {
+    await dbReady
     return getLocalStats()
   })
 
   ipcMain.handle('sync-invoices', async (_event, dateFrom: string) => {
+    await dbReady
     const config = getConfig()
     const activeCompany = config.companies[config.activeCompanyIndex]
     if (!activeCompany?.token) {
@@ -430,13 +436,13 @@ app.whenReady().then(async () => {
   setupAutoUpdater()
   createTray()
 
-  // Init database before creating window (but after IPC handlers are ready)
-  try {
-    await initDatabase()
+  // Init database - dbReady promise lets IPC handlers wait for it
+  dbReady = initDatabase().then(() => {
     appLog.info('Local database initialized successfully')
-  } catch (err) {
+  }).catch((err) => {
     appLog.error('Failed to initialize database:', String(err))
-  }
+  })
+  await dbReady
 
   createWindow()
 
