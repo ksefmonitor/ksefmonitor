@@ -293,6 +293,17 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   <MenuItem value="zignorowany">Zignorowany</MenuItem>
                 </TextField>
               </Grid>
+              <Grid size={{ xs: 12, sm: 12, md: 5 }}>
+                <TextField
+                  label="Kontrahent (nazwa lub NIP)"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  fullWidth
+                  size="small"
+                  placeholder="Szukaj po nazwie lub NIP..."
+                />
+              </Grid>
               <Grid size={{ xs: 12, sm: 6, md: 1 }}>
                 <Button
                   variant="contained"
@@ -309,21 +320,10 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         </Card>
       )}
 
-      {/* Search bar */}
+      {/* Selection bar */}
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <TextField
-              placeholder="Szukaj po numerze, sprzedawcy, nabywcy..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              fullWidth
-              size="small"
-              InputProps={{
-                startAdornment: <SearchRoundedIcon sx={{ color: 'text.secondary', mr: 1 }} />
-              }}
-            />
             {totalCount > 0 && (
               <Chip label={`${totalCount} faktur`} size="small" variant="outlined" />
             )}
