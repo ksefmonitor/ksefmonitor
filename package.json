@@ -1,6 +1,6 @@
 {
   "name": "ksef-monitor",
-  "version": "1.1.2",
+  "version": "1.1.13",
   "description": "KSeF Invoice Monitor - Automatyczne monitorowanie i przeglądanie faktur z KSeF",
   "main": "./dist/main/main.js",
   "scripts": {
@@ -38,7 +38,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0",
-    "sql.js": "^1.14.1",
-    "xml-crypto": "^6.1.2"
+    "sql.js": "^1.14.1"
   }
 }

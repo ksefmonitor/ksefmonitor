@@ -8,9 +8,6 @@ files:
   - dist/**/*
   - "!node_modules/**/*"
   - node_modules/sql.js/**/*
-  - node_modules/xml-crypto/**/*
-  - node_modules/xpath/**/*
-  - "node_modules/@xmldom/**/*"
 extraResources:
   - from: resources
     to: resources

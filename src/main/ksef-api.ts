@@ -423,30 +423,55 @@ export class KsefApiClient {
         throw lastError || new Error('Nie udało się odczytać klucza prywatnego. Sprawdź hasło i format klucza.')
       }
 
-      const decryptedKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+      // Sign XML manually — no xml-crypto dependency needed
+      // Enveloped XML-DSIG with RSA-SHA256
 
-      // Sign with xml-crypto (enveloped XAdES-BES signature)
-      const { SignedXml } = require('xml-crypto')
+      // 1. Canonicalize the XML (simple: normalize whitespace for our generated XML)
+      const canonXml = xml.trim()
 
-      const sig = new SignedXml({
-        privateKey: decryptedKeyPem,
-        publicCert: certPem,
-        signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
-        canonicalizationAlgorithm: 'http://www.w3.org/2001/10/xml-exc-c14n#'
-      })
+      // 2. Compute digest of the document (SHA-256)
+      const digest = crypto.createHash('sha256').update(canonXml, 'utf-8').digest('base64')
 
-      sig.addReference({
-        uri: '',
-        transforms: [
-          'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
-          'http://www.w3.org/2001/10/xml-exc-c14n#'
-        ],
-        digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256'
-      })
+      // 3. Build SignedInfo
+      const signedInfo = `<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">` +
+        `<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>` +
+        `<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>` +
+        `<ds:Reference URI="">` +
+        `<ds:Transforms>` +
+        `<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>` +
+        `</ds:Transforms>` +
+        `<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>` +
+        `<ds:DigestValue>${digest}</ds:DigestValue>` +
+        `</ds:Reference>` +
+        `</ds:SignedInfo>`
 
-      sig.computeSignature(xml)
+      // 4. Sign the SignedInfo with private key (RSA-SHA256)
+      const signer = crypto.createSign('RSA-SHA256')
+      signer.update(signedInfo)
+      const signatureValue = signer.sign(privateKey, 'base64')
 
-      return sig.getSignedXml()
+      // 5. Extract certificate base64 (strip PEM headers)
+      const certBase64 = certPem
+        .replace(/-----BEGIN CERTIFICATE-----/g, '')
+        .replace(/-----END CERTIFICATE-----/g, '')
+        .replace(/\s/g, '')
+
+      // 6. Build complete Signature element
+      const signatureElement = `<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">` +
+        signedInfo +
+        `<ds:SignatureValue>${signatureValue}</ds:SignatureValue>` +
+        `<ds:KeyInfo>` +
+        `<ds:X509Data>` +
+        `<ds:X509Certificate>${certBase64}</ds:X509Certificate>` +
+        `</ds:X509Data>` +
+        `</ds:KeyInfo>` +
+        `</ds:Signature>`
+
+      // 7. Insert signature before closing tag (enveloped)
+      const closingTag = '</AuthTokenRequest>'
+      const signedXml = canonXml.replace(closingTag, signatureElement + closingTag)
+
+      return signedXml
     } catch (err: any) {
       this.log.error('Certificate signing failed:', err.message)
       throw new Error('Nie udało się podpisać dokumentu certyfikatem: ' + err.message)
