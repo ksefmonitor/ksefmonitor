@@ -6,6 +6,7 @@ directories:
 files:
   - dist/**/*
   - "!node_modules/**/*"
+  - node_modules/sql.js/**/*
 extraResources:
   - from: resources
     to: resources

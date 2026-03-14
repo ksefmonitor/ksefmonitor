@@ -1,4 +1,3 @@
-import initSqlJs from 'sql.js/dist/sql-asm.js'
 import type { Database as SqlJsDatabase } from 'sql.js'
 import { app } from 'electron'
 import path from 'path'
@@ -23,6 +22,8 @@ function saveToFile(): void {
 }
 
 export async function initDatabase(): Promise<void> {
+  // Use require() for sql.js asm build - it's externalized (not bundled) so CJS works correctly
+  const initSqlJs = require('sql.js/dist/sql-asm.js')
   const SQL = await initSqlJs()
   const filePath = getDbPath()
 
