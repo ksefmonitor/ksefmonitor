@@ -1,4 +1,5 @@
-import initSqlJs, { type Database as SqlJsDatabase } from 'sql.js'
+import initSqlJs from 'sql.js/dist/sql-asm.js'
+import type { Database as SqlJsDatabase } from 'sql.js'
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'

@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ['electron-store', 'electron-updater'] })],
+    plugins: [externalizeDepsPlugin({ exclude: ['electron-store', 'electron-updater', 'sql.js'] })],
     build: {
       outDir: 'dist/main',
       rollupOptions: {
