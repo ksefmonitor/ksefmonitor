@@ -72,7 +72,7 @@ Od 2026 roku Krajowy System e-Faktur jest obowiązkowy dla wszystkich podatnikó
 ## Wymagania
 
 - Windows 10/11 (x64)
-- Certyfikat kwalifikowany lub pieczęć elektroniczna do autoryzacji w KSeF (plik .cer/.pem + klucz prywatny .key/.pem)
+- Certyfikat kwalifikowany lub pieczęć elektroniczna do autoryzacji w KSeF (plik .crt/.cer/.pem + klucz prywatny .key/.pem)
 
 ## Instalacja
 
@@ -81,7 +81,7 @@ Pobierz najnowszy instalator z [GitHub Releases](https://github.com/ksefmonitor/
 1. Pobierz `KSeF-Monitor-X.X.X-Setup.exe`
 2. Uruchom instalator
 3. Po instalacji skonfiguruj połączenie w **Ustawienia**:
-   - Dodaj firmę — podaj NIP, wskaż plik certyfikatu (.cer/.pem) i klucza prywatnego (.key/.pem)
+   - Dodaj firmę — podaj NIP, wskaż plik certyfikatu (.crt/.cer/.pem) i klucza prywatnego (.key/.pem)
    - Opcjonalnie ustaw interwał sprawdzania i PIN blokady
 4. Na **Dashboard** kliknij **Synchronizuj** aby pobrać istniejące faktury
 

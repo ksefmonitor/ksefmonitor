@@ -375,7 +375,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
-                    label="Certyfikat (.cer / .pem)"
+                    label="Certyfikat (.crt / .cer / .pem)"
                     value={newCertPath ? newCertPath.split(/[/\\]/).pop() : ''}
                     fullWidth
                     InputProps={{ readOnly: true }}

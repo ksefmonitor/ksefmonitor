@@ -432,7 +432,7 @@ function setupIpcHandlers(): void {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Wybierz certyfikat',
-      filters: [{ name: 'Certyfikaty', extensions: ['p12', 'pfx'] }],
+      filters: [{ name: 'Certyfikaty', extensions: ['crt', 'cer', 'pem', 'p12', 'pfx'] }],
       properties: ['openFile']
     })
     if (result.canceled || result.filePaths.length === 0) return null
