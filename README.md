@@ -57,7 +57,7 @@ Od 2026 roku Krajowy System e-Faktur jest obowiązkowy dla wszystkich podatnikó
 - **Status monitoringu** — uruchom/zatrzymaj cykliczne sprawdzanie
 
 ### Inne
-- **Wiele firm** — obsługa wielu tokenów KSeF, NIP wyodrębniany automatycznie z tokenu
+- **Wiele firm** — obsługa wielu certyfikatów KSeF, każda firma z własnym certyfikatem i kluczem
 - **Ciemny/jasny motyw** — przełączanie w ustawieniach, dynamiczne kolory paska tytułu
 - **Auto-aktualizacja** — automatyczne pobieranie i instalacja nowych wersji z GitHub Releases
 - **Logi** — podgląd aktywności API, synchronizacji i błędów w czasie rzeczywistym
@@ -72,7 +72,7 @@ Od 2026 roku Krajowy System e-Faktur jest obowiązkowy dla wszystkich podatnikó
 ## Wymagania
 
 - Windows 10/11 (x64)
-- Token autoryzacyjny API KSeF
+- Certyfikat kwalifikowany lub pieczęć elektroniczna do autoryzacji w KSeF (plik .cer/.pem + klucz prywatny .key/.pem)
 
 ## Instalacja
 
@@ -81,20 +81,21 @@ Pobierz najnowszy instalator z [GitHub Releases](https://github.com/ksefmonitor/
 1. Pobierz `KSeF-Monitor-X.X.X-Setup.exe`
 2. Uruchom instalator
 3. Po instalacji skonfiguruj połączenie w **Ustawienia**:
-   - Dodaj firmę (wklej token KSeF — NIP zostanie wyodrębniony automatycznie)
+   - Dodaj firmę — podaj NIP, wskaż plik certyfikatu (.cer/.pem) i klucza prywatnego (.key/.pem)
    - Opcjonalnie ustaw interwał sprawdzania i PIN blokady
 4. Na **Dashboard** kliknij **Synchronizuj** aby pobrać istniejące faktury
 
-## Konfiguracja API KSeF
+## Konfiguracja autoryzacji KSeF
 
-Aplikacja wymaga tokenu autoryzacyjnego do API KSeF:
+Aplikacja autoryzuje się w KSeF za pomocą certyfikatu kwalifikowanego (podpis XAdES):
 
-1. Wejdź na [portal KSeF](https://ksef.mf.gov.pl/)
-2. Zaloguj się za pomocą profilu zaufanego lub podpisu kwalifikowanego
-3. Wygeneruj token autoryzacyjny dla aplikacji
-4. Skopiuj token i wklej w **Ustawienia → Dodaj firmę**
+1. Przygotuj certyfikat (.cer lub .pem) i klucz prywatny (.key lub .pem)
+2. W aplikacji przejdź do **Ustawienia → Dodaj firmę**
+3. Podaj NIP firmy
+4. Wskaż pliki certyfikatu i klucza prywatnego
+5. Podaj hasło do klucza prywatnego (jeśli jest zaszyfrowany)
 
-Format tokenu: `XXXXXXXX-EC-...|nip-XXXXXXXXXX|hash` — NIP jest automatycznie wyodrębniany.
+Hasło klucza jest szyfrowane lokalnie (DPAPI) i nigdy nie opuszcza komputera.
 
 ## Rozwój
 
@@ -150,6 +151,7 @@ npx electron-builder --win --publish always
 | sql.js | - | SQLite w WASM (lokalna baza offline) |
 | electron-updater | - | Auto-aktualizacje z GitHub Releases |
 | electron-store | 11 | Persystencja konfiguracji (ESM) |
+| xml-crypto | - | Podpis XAdES (autoryzacja certyfikatem) |
 
 ## Architektura
 
@@ -160,7 +162,7 @@ src/
 │   ├── ksef-api.ts      # Klient API KSeF (auth flow, zapytania)
 │   ├── database.ts      # Lokalna baza SQLite (sql.js) + szyfrowanie AES-256
 │   ├── scheduler.ts     # Cykliczne sprawdzanie faktur
-│   ├── store.ts         # Persystencja konfiguracji + szyfrowanie tokenów
+│   ├── store.ts         # Persystencja konfiguracji + szyfrowanie haseł
 │   ├── crypto.ts        # Szyfrowanie safeStorage (DPAPI) + AES-256-GCM
 │   └── xlsx-builder.ts  # Export CSV
 ├── preload/             # Context bridge (IPC API)
@@ -173,19 +175,19 @@ src/
 
 ### Przepływ autoryzacji KSeF
 
-Aplikacja implementuje pełny 7-etapowy flow autoryzacji KSeF API v2:
+Aplikacja autoryzuje się w KSeF za pomocą podpisu XAdES:
 
-1. Pobranie certyfikatu klucza publicznego MF
-2. Żądanie challenge z API
-3. Szyfrowanie tokenu RSA-OAEP SHA-256 kluczem publicznym MF
-4. Autentykacja `/auth/ksef-token`
+1. Żądanie challenge z API (`POST /auth/challenge`)
+2. Budowanie dokumentu XML `AuthTokenRequest` z NIP i typem `certificateSubject`
+3. Podpis XAdES-BES certyfikatem kwalifikowanym (xml-crypto)
+4. Wysłanie podpisanego XML (`POST /auth/xades-signature`)
 5. Polling statusu autentykacji
-6. Wymiana na access/refresh token
+6. Wymiana na access/refresh token (`POST /auth/token/redeem`)
 7. Auto-odświeżanie tokenów z 60s marginesem bezpieczeństwa
 
 ### Bezpieczeństwo danych
 
-- **Tokeny i hasła** — szyfrowane `safeStorage` (DPAPI na Windows, powiązane z kontem użytkownika)
+- **Hasła kluczy prywatnych** — szyfrowane `safeStorage` (DPAPI na Windows, powiązane z kontem użytkownika)
 - **Baza danych** — plik SQLite szyfrowany AES-256-GCM (klucz z safeStorage)
 - **PIN** — szyfrowany tym samym mechanizmem
 - **Zero chmury** — dane przechowywane wyłącznie lokalnie w `%APPDATA%/ksef-monitor/`
@@ -205,7 +207,7 @@ Aplikacja implementuje pełny 7-etapowy flow autoryzacji KSeF API v2:
 | Export danych | CSV | Brak | Zależy od planu |
 | Szyfrowanie lokalne | AES-256 + DPAPI | N/A | Rzadko |
 | Open source | Tak | Nie | Nie |
-| Wymagane logowanie | Token (jednorazowo) | Profil zaufany (każdorazowo) | Różnie |
+| Wymagane logowanie | Certyfikat (jednorazowa konfiguracja) | Profil zaufany (każdorazowo) | Różnie |
 
 ## Licencja
 
