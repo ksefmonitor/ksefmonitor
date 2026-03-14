@@ -405,25 +405,16 @@ export class KsefApiClient {
         }
       }
 
-      // Fallback: use openssl CLI to decrypt the key (BoringSSL in Electron may not support all PBE algorithms)
-      if (!privateKey) {
-        this.log.warn('crypto API failed, trying openssl CLI fallback...')
+      // Fallback: manually decrypt PKCS#8 encrypted key (BoringSSL in Electron doesn't support all PBE algorithms)
+      if (!privateKey && isPem && keyBuf.toString('utf-8').includes('ENCRYPTED') && pass) {
+        this.log.warn('crypto API failed, trying manual PKCS#8 decryption...')
         try {
-          const { execSync } = require('child_process')
-          const tmpIn = require('path').join(require('os').tmpdir(), 'ksef_key_in.pem')
-          const tmpOut = require('path').join(require('os').tmpdir(), 'ksef_key_out.pem')
-          fs.writeFileSync(tmpIn, keyBuf)
-          try {
-            execSync(`openssl pkey -in "${tmpIn}" -out "${tmpOut}" -passin pass:${pass || ''}`, { stdio: 'pipe' })
-            const decryptedPem = fs.readFileSync(tmpOut, 'utf-8')
-            privateKey = crypto.createPrivateKey(decryptedPem)
-            this.log.info('Key loaded successfully via openssl CLI')
-          } finally {
-            try { fs.unlinkSync(tmpIn) } catch {}
-            try { fs.unlinkSync(tmpOut) } catch {}
-          }
+          const { decryptPkcs8 } = require('./pkcs8-decrypt')
+          const decryptedPem = decryptPkcs8(keyBuf.toString('utf-8'), pass)
+          privateKey = crypto.createPrivateKey(decryptedPem)
+          this.log.info('Key loaded successfully via manual PKCS#8 decryption')
         } catch (e: any) {
-          this.log.error('OpenSSL fallback also failed: ' + e.message)
+          this.log.error('Manual PKCS#8 decryption failed: ' + e.message)
         }
       }
 
