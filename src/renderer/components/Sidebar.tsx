@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Box,
@@ -30,6 +30,11 @@ const menuItems = [
 export function Sidebar({ newInvoicesCount }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const [appVersion, setAppVersion] = useState('')
+
+  useEffect(() => {
+    window.api.getAppVersion().then(setAppVersion)
+  }, [])
 
   return (
     <Box
@@ -86,7 +91,7 @@ export function Sidebar({ newInvoicesCount }: SidebarProps) {
             KSeF Monitor
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
-            v1.0.0
+            v{appVersion}
           </Typography>
         </Box>
       </Box>

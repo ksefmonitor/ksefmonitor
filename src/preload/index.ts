@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata } from '../shared/types'
 
 const api = {
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+
   getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('get-config'),
 
   saveConfig: (config: AppConfig): Promise<void> =>

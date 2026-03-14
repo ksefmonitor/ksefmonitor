@@ -35,9 +35,11 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
   const [showToken, setShowToken] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
     window.api.getConfig().then(setConfig)
+    window.api.getAppVersion().then(setAppVersion)
   }, [])
 
   async function handleSave() {
@@ -62,12 +64,21 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
     setConfig({ ...config, ...partial })
   }
 
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null)
+
   async function handleCheckUpdates() {
+    setUpdateStatus('Sprawdzanie...')
     try {
-      await window.api.checkForUpdates()
+      const result = await window.api.checkForUpdates()
+      if (result && typeof result === 'object' && 'message' in result) {
+        setUpdateStatus(result.message as string)
+      } else {
+        setUpdateStatus('Masz najnowszą wersję')
+      }
     } catch {
-      setError('Nie udało się sprawdzić aktualizacji')
+      setUpdateStatus('Nie udało się sprawdzić aktualizacji')
     }
+    setTimeout(() => setUpdateStatus(null), 5000)
   }
 
   if (!config) return null
@@ -92,7 +103,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
           </Box>
 
           <Grid container spacing={3}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 label="Adres API"
                 value={config.apiUrl}
@@ -102,7 +113,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                 placeholder="https://api.ksef.mf.gov.pl/v2"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 label="Token autoryzacyjny"
                 type={showToken ? 'text' : 'password'}
@@ -125,7 +136,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 label="NIP"
                 value={config.nip}
@@ -148,7 +159,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
           </Box>
 
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -169,7 +180,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
                 }
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 label="Interwał sprawdzania (minuty)"
                 type="number"
@@ -194,7 +205,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
             Wygląd
           </Typography>
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 label="Motyw"
                 select
@@ -226,8 +237,13 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
             >
               Sprawdź aktualizacje
             </Button>
-            <Chip label="v1.0.0" size="small" variant="outlined" />
+            <Chip label={`v${appVersion}`} size="small" variant="outlined" />
           </Box>
+          {updateStatus && (
+            <Typography variant="body2" sx={{ mt: 1, color: 'primary.main', fontWeight: 500 }}>
+              {updateStatus}
+            </Typography>
+          )}
           <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
             Aktualizacje są pobierane automatycznie z serwera GitHub Releases
           </Typography>
