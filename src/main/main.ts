@@ -391,14 +391,23 @@ function setupIpcHandlers(): void {
   })
 
   ipcMain.handle('test-notification', () => {
-    const notification = new Notification({
-      title: 'KSeF Monitor - Test',
-      body: 'Powiadomienia działają poprawnie!',
-      silent: false
-    })
-    notification.show()
-    shell.beep()
-    appLog.info('Test notification sent')
+    try {
+      if (Notification.isSupported()) {
+        const notification = new Notification({
+          title: 'KSeF Monitor - Test',
+          body: 'Powiadomienia działają poprawnie!',
+          silent: false
+        })
+        notification.show()
+      }
+      shell.beep()
+      appLog.info('Test notification sent')
+      return { ok: true }
+    } catch (err: any) {
+      appLog.error('Notification error: ' + err.message)
+      shell.beep()
+      return { ok: false, error: err.message }
+    }
   })
 
   ipcMain.handle('update-invoice-status', async (_event, ksefNumber: string, status: string) => {
@@ -555,6 +564,9 @@ declare module 'electron' {
     isQuitting?: boolean
   }
 }
+
+// Required for Windows notifications
+app.setAppUserModelId('pl.ksef.monitor')
 
 app.whenReady().then(async () => {
   // Auto-start with Windows

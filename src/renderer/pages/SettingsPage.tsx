@@ -526,12 +526,17 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
           <Typography variant="h6" sx={{ mb: 2 }}>Powiadomienia</Typography>
           <Button
             variant="outlined"
-            onClick={() => window.api.testNotification()}
+            onClick={async () => {
+              const result = await window.api.testNotification()
+              if (result && !(result as any).ok) {
+                setError('Powiadomienia nie są obsługiwane: ' + (result as any).error)
+              }
+            }}
           >
             Test powiadomienia
           </Button>
           <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
-            Wyślij testowe powiadomienie z dźwiękiem
+            Wyślij testowe powiadomienie systemowe z dźwiękiem
           </Typography>
         </CardContent>
       </Card>
