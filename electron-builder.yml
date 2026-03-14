@@ -12,6 +12,7 @@ win:
     - target: nsis
       arch:
         - x64
+  icon: resources/icon.ico
   artifactName: ${productName}-${version}-Setup.${ext}
   signAndEditExecutable: false
 nsis:
