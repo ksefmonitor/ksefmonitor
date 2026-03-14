@@ -433,34 +433,36 @@ export class KsefApiClient {
       // The XML is already canonical (no declaration, no indentation, no extra whitespace)
       const digest = crypto.createHash('sha256').update(xml, 'utf-8').digest('base64')
 
-      // 3. Build SignedInfo (this is what we sign with the private key)
-      //    Must be canonical — no extra whitespace, consistent namespace
-      const signedInfo =
-        '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
-        '<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>' +
-        '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></SignatureMethod>' +
-        '<Reference URI="">' +
-        '<Transforms>' +
-        '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></Transform>' +
-        '<Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></Transform>' +
-        '</Transforms>' +
-        '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></DigestMethod>' +
-        '<DigestValue>' + digest + '</DigestValue>' +
-        '</Reference>' +
-        '</SignedInfo>'
-
-      // 4. Sign SignedInfo with RSA-SHA256
-      const signer = crypto.createSign('RSA-SHA256')
-      signer.update(signedInfo)
-      const signatureValue = signer.sign(privateKey, 'base64')
-
-      // 5. Extract certificate base64
+      // Extract certificate base64
       const certBase64 = certPem
         .replace(/-----BEGIN CERTIFICATE-----/g, '')
         .replace(/-----END CERTIFICATE-----/g, '')
         .replace(/\s/g, '')
 
-      // 6. Build Signature element with ds: prefix
+      // Build SignedInfo — MUST be in canonical form matching what KSeF will extract
+      // C14N of <ds:SignedInfo> within <ds:Signature xmlns:ds="..."> propagates the xmlns:ds
+      // So the canonical form has xmlns:ds on SignedInfo itself
+      const signedInfoCanonical =
+        '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
+        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:CanonicalizationMethod>' +
+        '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></ds:SignatureMethod>' +
+        '<ds:Reference URI="">' +
+        '<ds:Transforms>' +
+        '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
+        '<ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:Transform>' +
+        '</ds:Transforms>' +
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
+        '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
+        '</ds:Reference>' +
+        '</ds:SignedInfo>'
+
+      // Sign the canonical SignedInfo with RSA-SHA256
+      const signer = crypto.createSign('RSA-SHA256')
+      signer.update(signedInfoCanonical)
+      const signatureValue = signer.sign(privateKey, 'base64')
+
+      // Build complete Signature element
+      // Note: SignedInfo here does NOT have xmlns:ds (inherited from parent Signature)
       const signatureXml =
         '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
         '<ds:SignedInfo>' +
@@ -483,7 +485,7 @@ export class KsefApiClient {
         '</ds:KeyInfo>' +
         '</ds:Signature>'
 
-      // 7. Insert before closing tag
+      // Insert before closing tag
       const closingTag = '</AuthTokenRequest>'
       const signedXml = xml.replace(closingTag, signatureXml + closingTag)
 
