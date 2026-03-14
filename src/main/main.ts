@@ -6,7 +6,8 @@ import { InvoiceScheduler } from './scheduler'
 import { getConfig, saveConfig } from './store'
 import {
   initDatabase, upsertInvoices, saveInvoiceXmlToDb, getInvoiceXmlFromDb,
-  queryLocalInvoices, getLocalStats, getSyncState, setSyncState, closeDatabase
+  queryLocalInvoices, getLocalStats, getSyncState, setSyncState, closeDatabase,
+  updateInvoiceStatus
 } from './database'
 import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata, LogEntry, SubjectType } from '../shared/types'
 
@@ -383,6 +384,109 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('get-app-logs', () => {
     return appLogs
+  })
+
+  ipcMain.handle('update-invoice-status', async (_event, ksefNumber: string, status: string) => {
+    await dbReady
+    updateInvoiceStatus(ksefNumber, status)
+  })
+
+  ipcMain.handle('export-invoices-xlsx', async (_event, invoices: InvoiceMetadata[]) => {
+    if (!mainWindow) return null
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `faktury_${new Date().toISOString().split('T')[0]}.xlsx`,
+      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+    })
+    if (result.canceled || !result.filePath) return null
+
+    // Build XLSX manually (simple XML-based xlsx)
+    const fs = await import('fs/promises')
+    const path = await import('path')
+
+    const escXml = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const formatNum = (n: number) => n.toFixed(2)
+
+    let rows = ''
+    // Header row
+    rows += '<row r="1">'
+    const headers = ['Nr faktury', 'Nr KSeF', 'Data wystawienia', 'Sprzedawca', 'NIP sprzedawcy', 'Nabywca', 'NIP nabywcy', 'Netto', 'VAT', 'Brutto', 'Waluta', 'Status']
+    headers.forEach((h, i) => {
+      const col = String.fromCharCode(65 + i)
+      rows += `<c r="${col}1" t="inlineStr"><is><t>${escXml(h)}</t></is></c>`
+    })
+    rows += '</row>'
+
+    // Data rows
+    invoices.forEach((inv, idx) => {
+      const r = idx + 2
+      const vals = [
+        inv.invoiceNumber, inv.ksefNumber, inv.issueDate,
+        inv.seller?.name, inv.seller?.nip,
+        inv.buyer?.name, inv.buyer?.identifier?.value,
+        formatNum(inv.netAmount || 0), formatNum(inv.vatAmount || 0), formatNum(inv.grossAmount || 0),
+        inv.currency || 'PLN', inv.status || 'nowy'
+      ]
+      rows += `<row r="${r}">`
+      vals.forEach((v, i) => {
+        const col = String.fromCharCode(65 + i)
+        // Numbers for columns H, I, J (indices 7, 8, 9)
+        if (i >= 7 && i <= 9) {
+          rows += `<c r="${col}${r}"><v>${v}</v></c>`
+        } else {
+          rows += `<c r="${col}${r}" t="inlineStr"><is><t>${escXml(String(v || ''))}</t></is></c>`
+        }
+      })
+      rows += '</row>'
+    })
+
+    const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>${rows}</sheetData>
+</worksheet>`
+
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`
+
+    const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`
+
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Faktury" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`
+
+    const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`
+
+    // Create xlsx (zip) using archiver-like approach with Node's built-in zlib
+    const { createWriteStream } = await import('fs')
+    const archiver = await import('archiver')
+
+    await new Promise<void>((resolve, reject) => {
+      const archive = (archiver as any).default('zip', { zlib: { level: 9 } })
+      const output = createWriteStream(result.filePath!)
+      output.on('close', resolve)
+      archive.on('error', reject)
+      archive.pipe(output)
+      archive.append(contentTypes, { name: '[Content_Types].xml' })
+      archive.append(rels, { name: '_rels/.rels' })
+      archive.append(workbook, { name: 'xl/workbook.xml' })
+      archive.append(wbRels, { name: 'xl/_rels/workbook.xml.rels' })
+      archive.append(sheetXml, { name: 'xl/worksheets/sheet1.xml' })
+      archive.finalize()
+    })
+
+    appLog.info(`Exported ${invoices.length} invoices to ${result.filePath}`)
+    return result.filePath
   })
 }
 

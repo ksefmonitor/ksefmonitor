@@ -4,7 +4,6 @@ import { HashRouter, Routes, Route } from 'react-router-dom'
 import { darkTheme, lightTheme } from './theme'
 import { Sidebar } from './components/Sidebar'
 import { InvoicesPage } from './pages/InvoicesPage'
-import { SummaryPage } from './pages/SummaryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LogsPage } from './pages/LogsPage'
@@ -78,7 +77,6 @@ export default function App() {
                   />
                 }
               />
-              <Route path="/summary" element={<SummaryPage />} />
               <Route path="/logs" element={<LogsPage />} />
               <Route
                 path="/settings"

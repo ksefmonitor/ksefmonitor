@@ -17,7 +17,6 @@ import {
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded'
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
-import BarChartRoundedIcon from '@mui/icons-material/BarChartRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import ArticleRoundedIcon from '@mui/icons-material/ArticleRounded'
 
@@ -28,7 +27,6 @@ interface SidebarProps {
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: DashboardRoundedIcon },
   { path: '/invoices', label: 'Faktury', icon: ReceiptLongRoundedIcon, badgeKey: 'invoices' as const },
-  { path: '/summary', label: 'Podsumowania', icon: BarChartRoundedIcon },
   { path: '/logs', label: 'Logi', icon: ArticleRoundedIcon },
   { path: '/settings', label: 'Ustawienia', icon: SettingsRoundedIcon }
 ]

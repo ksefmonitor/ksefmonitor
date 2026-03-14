@@ -62,9 +62,15 @@ export async function initDatabase(): Promise<void> {
       hasAttachment INTEGER,
       invoiceHash TEXT,
       subjectType TEXT,
-      syncedAt TEXT
+      syncedAt TEXT,
+      status TEXT DEFAULT 'nowy'
     )
   `)
+
+  // Migration: add status column if missing (existing databases)
+  try {
+    db.run("ALTER TABLE invoices ADD COLUMN status TEXT DEFAULT 'nowy'")
+  } catch { /* column already exists */ }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS invoice_xml (
@@ -103,14 +109,22 @@ export function upsertInvoices(invoices: InvoiceMetadata[], subjectType: string)
   try {
     for (const inv of invoices) {
       database.run(
-        `INSERT OR REPLACE INTO invoices (
+        `INSERT INTO invoices (
           ksefNumber, invoiceNumber, issueDate, invoicingDate, acquisitionDate,
           permanentStorageDate, sellerNip, sellerName, buyerIdentifierType,
           buyerIdentifierValue, buyerName, netAmount, grossAmount, vatAmount,
           currency, invoicingMode, invoiceType, formCodeSystem, formCodeSchema,
           formCodeValue, isSelfInvoicing, hasAttachment, invoiceHash,
-          subjectType, syncedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          subjectType, syncedAt, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'nowy')
+        ON CONFLICT(ksefNumber) DO UPDATE SET
+          invoiceNumber=excluded.invoiceNumber, issueDate=excluded.issueDate,
+          invoicingDate=excluded.invoicingDate, acquisitionDate=excluded.acquisitionDate,
+          permanentStorageDate=excluded.permanentStorageDate, sellerNip=excluded.sellerNip,
+          sellerName=excluded.sellerName, buyerIdentifierType=excluded.buyerIdentifierType,
+          buyerIdentifierValue=excluded.buyerIdentifierValue, buyerName=excluded.buyerName,
+          netAmount=excluded.netAmount, grossAmount=excluded.grossAmount, vatAmount=excluded.vatAmount,
+          currency=excluded.currency, syncedAt=excluded.syncedAt`,
         [
           inv.ksefNumber,
           inv.invoiceNumber || '',
@@ -149,6 +163,12 @@ export function upsertInvoices(invoices: InvoiceMetadata[], subjectType: string)
 
   saveToFile()
   return count
+}
+
+export function updateInvoiceStatus(ksefNumber: string, status: string): void {
+  const database = getDb()
+  database.run('UPDATE invoices SET status = ? WHERE ksefNumber = ?', [status, ksefNumber])
+  saveToFile()
 }
 
 export function saveInvoiceXmlToDb(ksefNumber: string, xml: string): void {
@@ -199,7 +219,8 @@ function rowToInvoiceMetadata(row: Record<string, any>): InvoiceMetadata {
     },
     isSelfInvoicing: !!(row.isSelfInvoicing as number),
     hasAttachment: !!(row.hasAttachment as number),
-    invoiceHash: row.invoiceHash as string
+    invoiceHash: row.invoiceHash as string,
+    status: (row.status as string) || 'nowy'
   }
 }
 

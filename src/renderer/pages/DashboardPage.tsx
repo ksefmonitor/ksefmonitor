@@ -138,60 +138,6 @@ export function DashboardPage() {
           setRecentInvoices(localData.invoices)
         }
       } catch { /* DB not ready yet */ }
-
-      // Then try to fetch fresh data from API
-      try {
-        const now = new Date()
-        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
-
-        const dateRange = {
-          dateType: 'PermanentStorage' as const,
-          from: threeMonthsAgo.toISOString(),
-          to: now.toISOString()
-        }
-
-        const [sellerRes, buyerRes] = await Promise.all([
-          window.api.queryInvoices({
-            subjectType: 'Subject1',
-            dateRange,
-            sortOrder: 'Desc',
-            pageSize: 50,
-            pageOffset: 0
-          }),
-          window.api.queryInvoices({
-            subjectType: 'Subject2',
-            dateRange,
-            sortOrder: 'Desc',
-            pageSize: 50,
-            pageOffset: 0
-          })
-        ])
-
-        const allInvoices = [...(sellerRes.invoices || []), ...(buyerRes.invoices || [])]
-        const uniqueMap = new Map<string, InvoiceMetadata>()
-        for (const inv of allInvoices) {
-          if (!uniqueMap.has(inv.ksefNumber)) {
-            uniqueMap.set(inv.ksefNumber, inv)
-          }
-        }
-        const invoices = Array.from(uniqueMap.values())
-          .sort((a, b) => new Date(b.permanentStorageDate || b.issueDate).getTime() - new Date(a.permanentStorageDate || a.issueDate).getTime())
-
-        setRecentInvoices(invoices.slice(0, 10))
-        setStats({
-          count: invoices.length,
-          totalNet: invoices.reduce((s, i) => s + (i.netAmount || 0), 0),
-          totalGross: invoices.reduce((s, i) => s + (i.grossAmount || 0), 0),
-          totalVat: invoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
-        })
-
-        // Refresh local stats after API data was saved
-        const ls = await window.api.getLocalStats()
-        setLocalStats(ls)
-      } catch (apiErr: any) {
-        console.error('API error (using local data):', apiErr)
-        setError('Brak połączenia z API KSeF — wyświetlam dane lokalne')
-      }
     } catch (err: any) {
       console.error('Dashboard load error:', err)
       setError(cleanError(err))

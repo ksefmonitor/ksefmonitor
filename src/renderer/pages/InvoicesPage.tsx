@@ -23,6 +23,7 @@ import {
 } from '@mui/material'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
+import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded'
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import FilterAltRoundedIcon from '@mui/icons-material/FilterAltRounded'
 import { InvoiceViewer } from '../components/InvoiceViewer'
@@ -124,6 +125,27 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
       setSelectedIds(new Set())
     } else {
       setSelectedIds(new Set(invoices.map((i) => i.ksefNumber)))
+    }
+  }
+
+  async function handleStatusChange(ksefNumber: string, newStatus: string) {
+    try {
+      await window.api.updateInvoiceStatus(ksefNumber, newStatus)
+      setInvoices(prev => prev.map(inv =>
+        inv.ksefNumber === ksefNumber ? { ...inv, status: newStatus } : inv
+      ))
+    } catch (error) {
+      console.error('Status update error:', error)
+    }
+  }
+
+  async function handleExportXlsx() {
+    const selected = invoices.filter(i => selectedIds.has(i.ksefNumber))
+    if (selected.length === 0) return
+    try {
+      await window.api.exportInvoicesXlsx(selected)
+    } catch (error) {
+      console.error('Export error:', error)
     }
   }
 
@@ -287,6 +309,14 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   />
                   <Chip label={`Netto: ${formatCurrency(sumNet)}`} size="small" variant="outlined" color="primary" />
                   <Chip label={`Brutto: ${formatCurrency(sumGross)}`} size="small" variant="outlined" color="primary" />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<FileDownloadRoundedIcon />}
+                    onClick={handleExportXlsx}
+                  >
+                    Excel
+                  </Button>
                 </>
               )
             })()}
@@ -308,7 +338,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: '48px 1fr 1.2fr 1.2fr 120px 120px 100px 100px',
+              gridTemplateColumns: '48px 1fr 1.2fr 1.2fr 110px 110px 90px 100px 100px',
               p: 2,
               borderBottom: (t) => `1px solid ${t.palette.divider}`,
               background: (t) => alpha(t.palette.primary.main, 0.04)
@@ -339,6 +369,9 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
               DATA
             </Typography>
             <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textAlign: 'center' }}>
+              STATUS
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textAlign: 'center' }}>
               AKCJE
             </Typography>
           </Box>
@@ -359,7 +392,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                 key={inv.ksefNumber}
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: '48px 1fr 1.2fr 1.2fr 120px 120px 100px 100px',
+                  gridTemplateColumns: '48px 1fr 1.2fr 1.2fr 110px 110px 90px 100px 100px',
                   p: 2,
                   alignItems: 'center',
                   borderBottom: (t) => `1px solid ${t.palette.divider}`,
@@ -369,7 +402,9 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                   },
                   ...(selectedIds.has(inv.ksefNumber)
                     ? { background: (t) => alpha(t.palette.primary.main, 0.08) }
-                    : {})
+                    : inv.status === 'zsynchronizowany'
+                      ? { background: (t) => alpha(t.palette.success.main, 0.08) }
+                      : {})
                 }}
               >
                 <Checkbox
@@ -422,6 +457,24 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                 >
                   {inv.issueDate ? new Date(inv.issueDate).toLocaleDateString('pl-PL') : '-'}
                 </Typography>
+                <TextField
+                  select
+                  value={inv.status || 'nowy'}
+                  onChange={(e) => handleStatusChange(inv.ksefNumber, e.target.value)}
+                  size="small"
+                  variant="standard"
+                  sx={{
+                    '& .MuiInput-input': {
+                      fontSize: '0.7rem',
+                      textAlign: 'center',
+                      color: inv.status === 'zsynchronizowany' ? 'success.main' : 'warning.main',
+                      fontWeight: 600
+                    }
+                  }}
+                >
+                  <MenuItem value="nowy">Nowy</MenuItem>
+                  <MenuItem value="zsynchronizowany">Zsynchronizowany</MenuItem>
+                </TextField>
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
                   <Tooltip title="Podgląd">
                     <IconButton size="small" onClick={() => handlePreview(inv)}>

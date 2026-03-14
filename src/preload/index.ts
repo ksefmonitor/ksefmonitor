@@ -74,6 +74,12 @@ const api = {
     return () => ipcRenderer.removeListener('update-available', handler)
   },
 
+  updateInvoiceStatus: (ksefNumber: string, status: string): Promise<void> =>
+    ipcRenderer.invoke('update-invoice-status', ksefNumber, status),
+
+  exportInvoicesXlsx: (invoices: InvoiceMetadata[]): Promise<string | null> =>
+    ipcRenderer.invoke('export-invoices-xlsx', invoices),
+
   onUpdateDownloaded: (callback: (info: { version: string }) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) => {
       callback(info)

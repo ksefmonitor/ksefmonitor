@@ -96,6 +96,7 @@ export interface InvoiceMetadata {
   isSelfInvoicing: boolean
   hasAttachment: boolean
   invoiceHash: string
+  status?: string
 }
 
 // Query filters
@@ -173,6 +174,8 @@ export interface IpcApi {
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void
   installUpdate: () => void
   saveInvoiceXml: (ksefNumber: string, xmlContent: string) => Promise<string | null>
+  updateInvoiceStatus: (ksefNumber: string, status: string) => Promise<void>
+  exportInvoicesXlsx: (invoices: InvoiceMetadata[]) => Promise<string | null>
 }
 
 declare global {
