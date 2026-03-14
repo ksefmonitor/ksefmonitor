@@ -26,6 +26,13 @@ import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import StorageRoundedIcon from '@mui/icons-material/StorageRounded'
 import type { AppConfig, InvoiceMetadata, LocalStats } from '../../shared/types'
 
+function cleanError(err: any): string {
+  const msg = err?.message || String(err)
+  // Strip Electron IPC wrapper: "Error invoking remote method 'xxx': Error: actual message"
+  const match = msg.match(/Error invoking remote method '[^']+': (?:Error: )?(.+)/)
+  return match ? match[1] : msg
+}
+
 interface StatCardProps {
   title: string
   value: string | number
@@ -179,7 +186,7 @@ export function DashboardPage() {
       }
     } catch (err: any) {
       console.error('Dashboard load error:', err)
-      setError(err?.message || 'Błąd ładowania dashboardu')
+      setError(cleanError(err))
     } finally {
       setLoading(false)
     }
@@ -196,7 +203,7 @@ export function DashboardPage() {
       setLocalStats(ls)
       await loadDashboard()
     } catch (err: any) {
-      setError(err?.message || 'Błąd synchronizacji')
+      setError(cleanError(err))
     } finally {
       setSyncing(false)
     }
@@ -331,7 +338,7 @@ export function DashboardPage() {
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard
-                title="Faktury (ostatnie 3 miesiące)"
+                title="Faktury"
                 value={stats.count}
                 icon={<ReceiptLongRoundedIcon sx={{ color: '#fff' }} />}
                 gradient="linear-gradient(135deg, #6C63FF 0%, #918AFF 100%)"

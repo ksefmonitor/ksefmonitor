@@ -183,7 +183,15 @@ export class KsefApiClient {
       return result.data
     }
 
-    throw new Error(`KSeF API Error ${result.statusCode}: ${result.raw}`)
+    // Extract human-readable message from KSeF error response
+    let message = `Błąd API KSeF (${result.statusCode})`
+    try {
+      const parsed = typeof result.data === 'object' ? result.data : JSON.parse(result.raw)
+      const status = (parsed as any)?.status
+      if (status?.description) message = status.description
+      if (status?.details?.length) message += ': ' + status.details.join('; ')
+    } catch { /* use default message */ }
+    throw new Error(message)
   }
 
   // ─── Authentication flow ───────────────────────────────────────────────────

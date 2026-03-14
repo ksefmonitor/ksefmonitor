@@ -238,27 +238,35 @@ function setupIpcHandlers(): void {
     if (!activeCompany?.token) {
       return { invoices: [], hasMore: false, isTruncated: false, permanentStorageHwmDate: '' }
     }
-    const response = await apiClient.queryInvoices(filters)
-    // Save to local DB
-    await dbReady
-    if (response.invoices?.length > 0) {
-      upsertInvoices(response.invoices, filters.subjectType)
-      appLog.info(`Saved ${response.invoices.length} invoices to local DB`)
+    try {
+      const response = await apiClient.queryInvoices(filters)
+      await dbReady
+      if (response.invoices?.length > 0) {
+        upsertInvoices(response.invoices, filters.subjectType)
+        appLog.info(`Saved ${response.invoices.length} invoices to local DB`)
+      }
+      return response
+    } catch (err: any) {
+      appLog.error(`query-invoices: ${err.message}`)
+      throw err
     }
-    return response
   })
 
   ipcMain.handle('download-invoice', async (_event, ksefNumber: string) => {
-    await dbReady
-    // Try local cache first
-    const cached = getInvoiceXmlFromDb(ksefNumber)
-    if (cached) {
-      appLog.info(`Serving XML from local cache: ${ksefNumber}`)
-      return cached
+    try {
+      await dbReady
+      const cached = getInvoiceXmlFromDb(ksefNumber)
+      if (cached) {
+        appLog.info(`Serving XML from local cache: ${ksefNumber}`)
+        return cached
+      }
+      const xml = await apiClient.downloadInvoice(ksefNumber)
+      saveInvoiceXmlToDb(ksefNumber, xml)
+      return xml
+    } catch (err: any) {
+      appLog.error(`download-invoice: ${err.message}`)
+      throw err
     }
-    const xml = await apiClient.downloadInvoice(ksefNumber)
-    saveInvoiceXmlToDb(ksefNumber, xml)
-    return xml
   })
 
   ipcMain.handle('query-local-invoices', async (_event, params: any) => {
@@ -283,46 +291,49 @@ function setupIpcHandlers(): void {
     let totalSynced = 0
     const dateTo = new Date().toISOString()
 
-    for (const subjectType of ['Subject1', 'Subject2'] as SubjectType[]) {
-      let pageOffset = 0
-      const pageSize = 100
-      let hasMore = true
+    try {
+      for (const subjectType of ['Subject1', 'Subject2'] as SubjectType[]) {
+        let pageOffset = 0
+        const pageSize = 100
+        let hasMore = true
 
-      while (hasMore) {
-        const response = await apiClient.queryInvoices({
-          subjectType,
-          dateRange: {
-            dateType: 'PermanentStorage',
-            from: dateFrom,
-            to: dateTo
-          },
-          sortOrder: 'Desc',
-          pageSize,
-          pageOffset
-        })
+        while (hasMore) {
+          const response = await apiClient.queryInvoices({
+            subjectType,
+            dateRange: {
+              dateType: 'PermanentStorage',
+              from: dateFrom,
+              to: dateTo
+            },
+            sortOrder: 'Desc',
+            pageSize,
+            pageOffset
+          })
 
-        const invoices = response.invoices || []
-        if (invoices.length > 0) {
-          upsertInvoices(invoices, subjectType)
-          totalSynced += invoices.length
-          appLog.info(`Synced ${invoices.length} invoices (${subjectType}, page ${pageOffset / pageSize + 1}), total: ${totalSynced}`)
+          const invoices = response.invoices || []
+          if (invoices.length > 0) {
+            upsertInvoices(invoices, subjectType)
+            totalSynced += invoices.length
+            appLog.info(`Synced ${invoices.length} invoices (${subjectType}, page ${pageOffset / pageSize + 1}), total: ${totalSynced}`)
 
-          // Notify renderer of progress
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('sync-progress', { synced: totalSynced, subjectType })
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('sync-progress', { synced: totalSynced, subjectType })
+            }
           }
+
+          hasMore = response.hasMore && invoices.length === pageSize
+          pageOffset += pageSize
         }
-
-        hasMore = response.hasMore && invoices.length === pageSize
-        pageOffset += pageSize
       }
+
+      setSyncState('lastFullSync', new Date().toISOString())
+      setSyncState('syncFrom', dateFrom)
+      appLog.info(`Full sync complete. Total invoices synced: ${totalSynced}`)
+      return { totalSynced }
+    } catch (err: any) {
+      appLog.error(`sync-invoices: ${err.message}`)
+      throw err
     }
-
-    setSyncState('lastFullSync', new Date().toISOString())
-    setSyncState('syncFrom', dateFrom)
-    appLog.info(`Full sync complete. Total invoices synced: ${totalSynced}`)
-
-    return { totalSynced }
   })
 
   ipcMain.handle('start-auto-check', () => {
