@@ -353,6 +353,7 @@ export class KsefApiClient {
     })
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      this.log.error(`Auth response ${response.statusCode}: ${response.raw}`)
       let message = `Błąd autoryzacji certyfikatem (${response.statusCode})`
       try {
         const parsed = typeof response.data === 'object' ? response.data : JSON.parse(response.raw)
@@ -470,6 +471,8 @@ export class KsefApiClient {
       // 7. Insert signature before closing tag (enveloped)
       const closingTag = '</AuthTokenRequest>'
       const signedXml = canonXml.replace(closingTag, signatureElement + closingTag)
+
+      this.log.info(`Signed XML length: ${signedXml.length}, has Signature: ${signedXml.includes('<ds:Signature')}`)
 
       return signedXml
     } catch (err: any) {
