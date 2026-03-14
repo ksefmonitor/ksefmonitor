@@ -180,6 +180,10 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    // If started with --hidden (autostart), stay in tray
+    if (process.argv.includes('--hidden')) {
+      return
+    }
     mainWindow?.show()
   })
 
@@ -553,6 +557,14 @@ declare module 'electron' {
 }
 
 app.whenReady().then(async () => {
+  // Auto-start with Windows
+  if (!isDev) {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      args: ['--hidden']
+    })
+  }
+
   const config = getConfig()
   apiClient = new KsefApiClient(config, appLog)
   scheduler = new InvoiceScheduler(apiClient, appLog)
