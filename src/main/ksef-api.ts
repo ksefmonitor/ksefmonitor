@@ -1,6 +1,7 @@
 import { net } from 'electron'
 import * as crypto from 'crypto'
 import * as fs from 'fs'
+import { decryptPkcs8 } from './pkcs8-decrypt'
 import type {
   AppConfig,
   InvoiceQueryFilters,
@@ -409,7 +410,6 @@ export class KsefApiClient {
       if (!privateKey && isPem && keyBuf.toString('utf-8').includes('ENCRYPTED') && pass) {
         this.log.warn('crypto API failed, trying manual PKCS#8 decryption...')
         try {
-          const { decryptPkcs8 } = require('./pkcs8-decrypt')
           const decryptedPem = decryptPkcs8(keyBuf.toString('utf-8'), pass)
           privateKey = crypto.createPrivateKey(decryptedPem)
           this.log.info('Key loaded successfully via manual PKCS#8 decryption')
