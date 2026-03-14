@@ -1,6 +1,6 @@
 {
   "name": "ksef-monitor",
-  "version": "1.0.11",
+  "version": "1.0.13",
   "description": "KSeF Invoice Monitor - Automatyczne monitorowanie i przeglądanie faktur z KSeF",
   "main": "./dist/main/main.js",
   "scripts": {
@@ -11,10 +11,9 @@
     "dist": "electron-vite build && electron-builder --win",
     "dist:publish": "electron-vite build && electron-builder --win --publish always"
   },
-  "author": "kwarpechowski",
+  "author": "ksef-monitor",
   "license": "MIT",
   "devDependencies": {
-    "@types/archiver": "^7.0.0",
     "@types/node": "^25.5.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
@@ -32,13 +31,13 @@
     "@mui/material": "^7.3.9",
     "@mui/x-data-grid": "^8.27.5",
     "@mui/x-date-pickers": "^8.27.2",
-    "archiver": "^7.0.1",
     "dayjs": "^1.11.13",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.6.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0",
-    "sql.js": "^1.14.1"
+    "sql.js": "^1.14.1",
+    "yazl": "^3.3.1"
   }
 }

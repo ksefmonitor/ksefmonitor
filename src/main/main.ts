@@ -491,26 +491,32 @@ function setupIpcHandlers(): void {
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 </Relationships>`
 
-    // Create xlsx (zip) using archiver-like approach with Node's built-in zlib
-    const { createWriteStream } = await import('fs')
-    const archiver = await import('archiver')
+    // Create xlsx (zip) using yazl (lightweight zip library)
+    try {
+      const yazl = require('yazl')
+      const { createWriteStream } = require('fs')
 
-    await new Promise<void>((resolve, reject) => {
-      const archive = (archiver as any).default('zip', { zlib: { level: 9 } })
-      const output = createWriteStream(result.filePath!)
-      output.on('close', resolve)
-      archive.on('error', reject)
-      archive.pipe(output)
-      archive.append(contentTypes, { name: '[Content_Types].xml' })
-      archive.append(rels, { name: '_rels/.rels' })
-      archive.append(workbook, { name: 'xl/workbook.xml' })
-      archive.append(wbRels, { name: 'xl/_rels/workbook.xml.rels' })
-      archive.append(sheetXml, { name: 'xl/worksheets/sheet1.xml' })
-      archive.finalize()
-    })
+      const zipfile = new yazl.ZipFile()
+      zipfile.addBuffer(Buffer.from(contentTypes, 'utf-8'), '[Content_Types].xml')
+      zipfile.addBuffer(Buffer.from(rels, 'utf-8'), '_rels/.rels')
+      zipfile.addBuffer(Buffer.from(workbook, 'utf-8'), 'xl/workbook.xml')
+      zipfile.addBuffer(Buffer.from(wbRels, 'utf-8'), 'xl/_rels/workbook.xml.rels')
+      zipfile.addBuffer(Buffer.from(sheetXml, 'utf-8'), 'xl/worksheets/sheet1.xml')
+      zipfile.end()
 
-    appLog.info(`Exported ${invoices.length} invoices to ${result.filePath}`)
-    return result.filePath
+      await new Promise<void>((resolve, reject) => {
+        const output = createWriteStream(result.filePath!)
+        output.on('close', resolve)
+        output.on('error', reject)
+        zipfile.outputStream.pipe(output)
+      })
+
+      appLog.info(`Exported ${invoices.length} invoices to ${result.filePath}`)
+      return result.filePath
+    } catch (err: any) {
+      appLog.error(`Excel export error: ${err.message}`)
+      throw err
+    }
   })
 }
 
