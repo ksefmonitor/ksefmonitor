@@ -313,9 +313,6 @@ export class KsefApiClient {
         '\n-----END CERTIFICATE-----'
     }
 
-    // Read key as raw buffer (could be PEM or DER)
-    const keyData = fs.readFileSync(this.keyPath, 'utf-8')
-
     // Build AuthTokenRequest XML
     const authTokenXml = `<?xml version="1.0" encoding="utf-8"?>
 <AuthTokenRequest xmlns="http://ksef.mf.gov.pl/auth/token/2.0">
@@ -327,7 +324,7 @@ export class KsefApiClient {
 </AuthTokenRequest>`
 
     // Sign with XAdES using the certificate and private key
-    const signedXml = this.signXmlWithCertificate(authTokenXml, certPem, keyData, this.keyPassword)
+    const signedXml = this.signXmlWithCertificate(authTokenXml, certPem, this.keyPassword)
 
     // Send signed XML to KSeF
     const url = `${this.baseUrl}/auth/xades-signature`
@@ -370,22 +367,26 @@ export class KsefApiClient {
   }
 
   /** Sign XML document with XAdES-BES using separate cert and key files */
-  private signXmlWithCertificate(xml: string, certPem: string, keyData: string, keyPassword: string): string {
+  private signXmlWithCertificate(xml: string, certPem: string, keyPassword: string): string {
     try {
       // Try multiple key formats: PEM (PKCS8, PKCS1, EC), DER
       let privateKey: crypto.KeyObject
-      const keyBuffer = Buffer.from(keyData)
-      const isPem = keyData.trim().startsWith('-----')
+      // Read key file as binary buffer for DER support
+      const keyFilePath = this.keyPath
+      const keyBuf = fs.readFileSync(keyFilePath)
+      const isPem = keyBuf.toString('utf-8').trim().startsWith('-----')
+
+      this.log.info(`Key format: ${isPem ? 'PEM' : 'DER'}, size: ${keyBuf.length} bytes`)
 
       const tryFormats = isPem
         ? [
-            { key: keyBuffer, passphrase: keyPassword || undefined },
-            { key: keyBuffer, format: 'pem' as const, passphrase: keyPassword || undefined }
+            { key: keyBuf, passphrase: keyPassword || undefined },
+            { key: keyBuf, format: 'pem' as const, passphrase: keyPassword || undefined }
           ]
         : [
-            { key: keyBuffer, format: 'der' as const, type: 'pkcs8' as const, passphrase: keyPassword || undefined },
-            { key: keyBuffer, format: 'der' as const, type: 'pkcs1' as const },
-            { key: keyBuffer, format: 'der' as const, type: 'sec1' as const }
+            { key: keyBuf, format: 'der' as const, type: 'pkcs8' as const },
+            { key: keyBuf, format: 'der' as const, type: 'pkcs1' as const },
+            { key: keyBuf, format: 'der' as const, type: 'sec1' as const }
           ]
 
       let lastError: Error | null = null
