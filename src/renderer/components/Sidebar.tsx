@@ -9,8 +9,12 @@ import {
   Typography,
   Badge,
   alpha,
-  Divider
+  Divider,
+  Drawer,
+  IconButton,
+  Tooltip
 } from '@mui/material'
+import MenuRoundedIcon from '@mui/icons-material/MenuRounded'
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
 import BarChartRoundedIcon from '@mui/icons-material/BarChartRounded'
@@ -29,42 +33,33 @@ const menuItems = [
   { path: '/settings', label: 'Ustawienia', icon: SettingsRoundedIcon }
 ]
 
+const DRAWER_WIDTH = 260
+
 export function Sidebar({ newInvoicesCount }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [appVersion, setAppVersion] = useState('')
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     window.api.getAppVersion().then(setAppVersion)
   }, [])
 
-  return (
+  const drawerContent = (
     <Box
       sx={{
-        width: 260,
-        minWidth: 260,
-        height: '100vh',
+        width: DRAWER_WIDTH,
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         background: (t) =>
           t.palette.mode === 'dark'
             ? 'linear-gradient(180deg, #1A1A2E 0%, #16162A 100%)'
-            : 'linear-gradient(180deg, #FFFFFF 0%, #F8F8FC 100%)',
-        borderRight: (t) => `1px solid ${t.palette.divider}`,
-        WebkitAppRegion: 'drag'
+            : 'linear-gradient(180deg, #FFFFFF 0%, #F8F8FC 100%)'
       }}
     >
       {/* Logo */}
-      <Box
-        sx={{
-          p: 3,
-          pt: 5,
-          pb: 2,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5
-        }}
-      >
+      <Box sx={{ p: 3, pt: 2, pb: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box
           sx={{
             width: 40,
@@ -101,14 +96,7 @@ export function Sidebar({ newInvoicesCount }: SidebarProps) {
       <Divider sx={{ mx: 2, my: 1 }} />
 
       {/* Navigation */}
-      <List
-        sx={{
-          px: 1.5,
-          py: 1,
-          flex: 1,
-          WebkitAppRegion: 'no-drag'
-        }}
-      >
+      <List sx={{ px: 1.5, py: 1, flex: 1 }}>
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path
           const Icon = item.icon
@@ -117,7 +105,10 @@ export function Sidebar({ newInvoicesCount }: SidebarProps) {
           return (
             <ListItemButton
               key={item.path}
-              onClick={() => navigate(item.path)}
+              onClick={() => {
+                navigate(item.path)
+                setOpen(false)
+              }}
               sx={{
                 borderRadius: 2.5,
                 mb: 0.5,
@@ -126,18 +117,11 @@ export function Sidebar({ newInvoicesCount }: SidebarProps) {
                 transition: 'all 0.2s ease',
                 ...(isActive
                   ? {
-                      background: (t) =>
-                        alpha(t.palette.primary.main, 0.15),
-                      '&:hover': {
-                        background: (t) =>
-                          alpha(t.palette.primary.main, 0.2)
-                      }
+                      background: (t) => alpha(t.palette.primary.main, 0.15),
+                      '&:hover': { background: (t) => alpha(t.palette.primary.main, 0.2) }
                     }
                   : {
-                      '&:hover': {
-                        background: (t) =>
-                          alpha(t.palette.primary.main, 0.08)
-                      }
+                      '&:hover': { background: (t) => alpha(t.palette.primary.main, 0.08) }
                     })
               }}
             >
@@ -145,20 +129,9 @@ export function Sidebar({ newInvoicesCount }: SidebarProps) {
                 <Badge
                   badgeContent={showBadge ? newInvoicesCount : 0}
                   color="error"
-                  sx={{
-                    '& .MuiBadge-badge': {
-                      fontSize: '0.65rem',
-                      height: 18,
-                      minWidth: 18
-                    }
-                  }}
+                  sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', height: 18, minWidth: 18 } }}
                 >
-                  <Icon
-                    sx={{
-                      color: isActive ? 'primary.main' : 'text.secondary',
-                      fontSize: 22
-                    }}
-                  />
+                  <Icon sx={{ color: isActive ? 'primary.main' : 'text.secondary', fontSize: 22 }} />
                 </Badge>
               </ListItemIcon>
               <ListItemText
@@ -184,5 +157,49 @@ export function Sidebar({ newInvoicesCount }: SidebarProps) {
         })}
       </List>
     </Box>
+  )
+
+  return (
+    <>
+      {/* Hamburger button */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 8,
+          left: 8,
+          zIndex: 1300,
+          WebkitAppRegion: 'no-drag'
+        }}
+      >
+        <Tooltip title="Menu">
+          <IconButton
+            onClick={() => setOpen(!open)}
+            sx={{
+              background: (t) => alpha(t.palette.background.paper, 0.8),
+              backdropFilter: 'blur(8px)',
+              '&:hover': { background: (t) => alpha(t.palette.primary.main, 0.1) }
+            }}
+          >
+            <MenuRoundedIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* Drawer */}
+      <Drawer
+        anchor="left"
+        open={open}
+        onClose={() => setOpen(false)}
+        PaperProps={{
+          sx: {
+            width: DRAWER_WIDTH,
+            border: 'none',
+            background: 'transparent'
+          }
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+    </>
   )
 }

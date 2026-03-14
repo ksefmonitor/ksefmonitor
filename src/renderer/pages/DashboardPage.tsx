@@ -12,10 +12,15 @@ import {
   Tooltip,
   Alert,
   Button,
-  LinearProgress
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded'
 import AccountBalanceRoundedIcon from '@mui/icons-material/AccountBalanceRounded'
 import CloudSyncRoundedIcon from '@mui/icons-material/CloudSyncRounded'
@@ -24,6 +29,7 @@ import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded'
 import StopRoundedIcon from '@mui/icons-material/StopRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import StorageRoundedIcon from '@mui/icons-material/StorageRounded'
+import { InvoiceViewer } from '../components/InvoiceViewer'
 import type { AppConfig, InvoiceMetadata, LocalStats } from '../../shared/types'
 
 function cleanError(err: any): string {
@@ -94,6 +100,8 @@ export function DashboardPage() {
   const [localStats, setLocalStats] = useState<LocalStats | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState(0)
+  const [previewXml, setPreviewXml] = useState<string | null>(null)
+  const [previewNumber, setPreviewNumber] = useState('')
 
   useEffect(() => {
     loadDashboard()
@@ -216,6 +224,16 @@ export function DashboardPage() {
       await window.api.startAutoCheck()
     }
     setAutoCheckRunning(!autoCheckRunning)
+  }
+
+  async function handlePreview(inv: InvoiceMetadata) {
+    try {
+      setPreviewNumber(inv.invoiceNumber || inv.ksefNumber)
+      const xml = await window.api.downloadInvoice(inv.ksefNumber)
+      setPreviewXml(xml)
+    } catch (err: any) {
+      setError(cleanError(err))
+    }
   }
 
   const formatCurrency = (amount: number) =>
@@ -422,13 +440,20 @@ export function DashboardPage() {
                           </Typography>
                         </Box>
                       </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {formatCurrency(inv.grossAmount || 0)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {inv.issueDate ? new Date(inv.issueDate).toLocaleDateString('pl-PL') : '-'}
-                        </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {formatCurrency(inv.grossAmount || 0)}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {inv.issueDate ? new Date(inv.issueDate).toLocaleDateString('pl-PL') : '-'}
+                          </Typography>
+                        </Box>
+                        <Tooltip title="Podgląd">
+                          <IconButton size="small" onClick={() => handlePreview(inv)}>
+                            <VisibilityRoundedIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </Box>
                   ))}
@@ -438,6 +463,25 @@ export function DashboardPage() {
           </Card>
         </>
       )}
+
+      {/* Invoice Preview Dialog */}
+      <Dialog
+        open={!!previewXml}
+        onClose={() => setPreviewXml(null)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          Podgląd faktury: {previewNumber}
+        </DialogTitle>
+        <DialogContent>
+          {previewXml && <InvoiceViewer xml={previewXml} />}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewXml(null)}>Zamknij</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

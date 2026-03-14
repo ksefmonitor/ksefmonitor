@@ -38,32 +38,17 @@ export function SummaryPage() {
   async function generateSummary() {
     setLoading(true)
     try {
-      // Fetch all invoices for the period
-      let allInvoices: InvoiceMetadata[] = []
-      let pageOffset = 0
-      let hasMore = true
+      // Fetch from local DB (no API call needed)
+      const result = await window.api.queryLocalInvoices({
+        dateFrom: new Date(dateFrom).toISOString(),
+        dateTo: new Date(dateTo + 'T23:59:59').toISOString(),
+        dateType,
+        sortOrder: 'Asc',
+        pageSize: 10000,
+        pageOffset: 0
+      })
 
-      while (hasMore) {
-        const response = await window.api.queryInvoices({
-          subjectType: 'Subject1',
-          dateRange: {
-            dateType,
-            from: new Date(dateFrom).toISOString(),
-            to: new Date(dateTo + 'T23:59:59').toISOString()
-          },
-          sortOrder: 'Asc',
-          pageSize: 100,
-          pageOffset
-        })
-
-        allInvoices = [...allInvoices, ...(response.invoices || [])]
-        hasMore = response.hasMore
-        pageOffset += 100
-
-        // Safety limit
-        if (pageOffset > 5000) break
-      }
-
+      const allInvoices = result.invoices || []
       setInvoices(allInvoices)
       setSummary(calculateSummary(allInvoices, dateFrom, dateTo))
     } catch (error) {

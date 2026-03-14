@@ -59,7 +59,8 @@ export default function App() {
               flexGrow: 1,
               overflow: 'auto',
               p: 3,
-              pt: 6,
+              pt: 7,
+              pl: 7,
               background: (t) =>
                 t.palette.mode === 'dark'
                   ? 'linear-gradient(180deg, #0F0F1A 0%, #161625 100%)'

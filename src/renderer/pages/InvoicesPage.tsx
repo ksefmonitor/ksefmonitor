@@ -25,6 +25,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import FilterAltRoundedIcon from '@mui/icons-material/FilterAltRounded'
+import { InvoiceViewer } from '../components/InvoiceViewer'
 import type {
   InvoiceMetadata,
   DateType,
@@ -273,13 +274,22 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
             {totalCount > 0 && (
               <Chip label={`${totalCount} faktur`} size="small" variant="outlined" />
             )}
-            {selectedIds.size > 0 && (
-              <Chip
-                label={`Zaznaczono: ${selectedIds.size}`}
-                color="primary"
-                onDelete={() => setSelectedIds(new Set())}
-              />
-            )}
+            {selectedIds.size > 0 && (() => {
+              const selected = invoices.filter(i => selectedIds.has(i.ksefNumber))
+              const sumNet = selected.reduce((s, i) => s + (i.netAmount || 0), 0)
+              const sumGross = selected.reduce((s, i) => s + (i.grossAmount || 0), 0)
+              return (
+                <>
+                  <Chip
+                    label={`Zaznaczono: ${selectedIds.size}`}
+                    color="primary"
+                    onDelete={() => setSelectedIds(new Set())}
+                  />
+                  <Chip label={`Netto: ${formatCurrency(sumNet)}`} size="small" variant="outlined" color="primary" />
+                  <Chip label={`Brutto: ${formatCurrency(sumGross)}`} size="small" variant="outlined" color="primary" />
+                </>
+              )
+            })()}
           </Box>
         </CardContent>
       </Card>
@@ -443,11 +453,11 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
         </CardContent>
       </Card>
 
-      {/* XML Preview Dialog */}
+      {/* Invoice Preview Dialog */}
       <Dialog
         open={!!previewXml}
         onClose={() => setPreviewXml(null)}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
         PaperProps={{ sx: { borderRadius: 3 } }}
       >
@@ -455,22 +465,7 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
           Podgląd faktury: {previewNumber}
         </DialogTitle>
         <DialogContent>
-          <Box
-            component="pre"
-            sx={{
-              background: (t) => alpha(t.palette.background.default, 0.5),
-              p: 2,
-              borderRadius: 2,
-              overflow: 'auto',
-              maxHeight: 500,
-              fontSize: '0.8rem',
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all'
-            }}
-          >
-            {previewXml}
-          </Box>
+          {previewXml && <InvoiceViewer xml={previewXml} />}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPreviewXml(null)}>Zamknij</Button>
