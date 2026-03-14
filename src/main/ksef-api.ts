@@ -314,15 +314,16 @@ export class KsefApiClient {
         '\n-----END CERTIFICATE-----'
     }
 
-    // Build AuthTokenRequest XML
-    const authTokenXml = `<?xml version="1.0" encoding="utf-8"?>
-<AuthTokenRequest xmlns="http://ksef.mf.gov.pl/auth/token/2.0">
-    <Challenge>${challenge}</Challenge>
-    <ContextIdentifier>
-        <Nip>${nip}</Nip>
-    </ContextIdentifier>
-    <SubjectIdentifierType>certificateSubject</SubjectIdentifierType>
-</AuthTokenRequest>`
+    // Build AuthTokenRequest XML — no indentation, no XML declaration
+    // C14N requires consistent serialization; no formatting = no ambiguity
+    const authTokenXml =
+      '<AuthTokenRequest xmlns="http://ksef.mf.gov.pl/auth/token/2.0">' +
+      '<Challenge>' + challenge + '</Challenge>' +
+      '<ContextIdentifier>' +
+      '<Nip>' + nip + '</Nip>' +
+      '</ContextIdentifier>' +
+      '<SubjectIdentifierType>certificateSubject</SubjectIdentifierType>' +
+      '</AuthTokenRequest>'
 
     // Sign with XAdES using the certificate and private key
     const signedXml = this.signXmlWithCertificate(authTokenXml, certPem, this.keyPassword)
@@ -425,16 +426,12 @@ export class KsefApiClient {
       }
 
       // Sign XML manually — enveloped XML-DSIG with RSA-SHA256
-      // Per XML-DSIG spec: digest is computed on document AFTER applying transforms
-      // Enveloped-signature transform = remove <Signature> element
-      // Since we're creating the signature, the "document without signature" = original XML
+      // Digest = SHA-256 of document after transforms:
+      //   1. enveloped-signature: removes <Signature> element → original XML (no signature yet)
+      //   2. C14N: canonicalize → since XML has no formatting, it's already canonical
 
-      // 1. Build the XML body without XML declaration (C14N removes it)
-      //    and without extra whitespace
-      const xmlBody = xml.replace(/<\?xml[^?]*\?>/, '').trim()
-
-      // 2. Compute SHA-256 digest of the document body (this is what KSeF will verify)
-      const digest = crypto.createHash('sha256').update(xmlBody, 'utf-8').digest('base64')
+      // The XML is already canonical (no declaration, no indentation, no extra whitespace)
+      const digest = crypto.createHash('sha256').update(xml, 'utf-8').digest('base64')
 
       // 3. Build SignedInfo (this is what we sign with the private key)
       //    Must be canonical — no extra whitespace, consistent namespace
@@ -488,7 +485,7 @@ export class KsefApiClient {
 
       // 7. Insert before closing tag
       const closingTag = '</AuthTokenRequest>'
-      const signedXml = xml.replace(closingTag, signatureXml + '\n' + closingTag)
+      const signedXml = xml.replace(closingTag, signatureXml + closingTag)
 
       this.log.info(`Signed XML length: ${signedXml.length}`)
 
