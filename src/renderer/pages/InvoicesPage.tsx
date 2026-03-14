@@ -404,7 +404,9 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                     ? { background: (t) => alpha(t.palette.primary.main, 0.08) }
                     : inv.status === 'zsynchronizowany'
                       ? { background: (t) => alpha(t.palette.success.main, 0.08) }
-                      : {})
+                      : inv.status === 'zignorowany'
+                        ? { background: (t) => alpha(t.palette.warning.main, 0.08) }
+                        : {})
                 }}
               >
                 <Checkbox
@@ -467,13 +469,14 @@ export function InvoicesPage({ onViewed }: InvoicesPageProps) {
                     '& .MuiInput-input': {
                       fontSize: '0.7rem',
                       textAlign: 'center',
-                      color: inv.status === 'zsynchronizowany' ? 'success.main' : 'warning.main',
+                      color: inv.status === 'zsynchronizowany' ? 'success.main' : inv.status === 'zignorowany' ? 'warning.main' : 'info.main',
                       fontWeight: 600
                     }
                   }}
                 >
                   <MenuItem value="nowy">Nowy</MenuItem>
                   <MenuItem value="zsynchronizowany">Zsynchronizowany</MenuItem>
+                  <MenuItem value="zignorowany">Zignorowany</MenuItem>
                 </TextField>
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
                   <Tooltip title="Podgląd">

@@ -74,6 +74,8 @@ const api = {
     return () => ipcRenderer.removeListener('update-available', handler)
   },
 
+  testNotification: (): Promise<void> => ipcRenderer.invoke('test-notification'),
+
   updateInvoiceStatus: (ksefNumber: string, status: string): Promise<void> =>
     ipcRenderer.invoke('update-invoice-status', ksefNumber, status),
 

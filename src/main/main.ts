@@ -386,6 +386,17 @@ function setupIpcHandlers(): void {
     return appLogs
   })
 
+  ipcMain.handle('test-notification', () => {
+    const notification = new Notification({
+      title: 'KSeF Monitor - Test',
+      body: 'Powiadomienia działają poprawnie!',
+      silent: false
+    })
+    notification.show()
+    shell.beep()
+    appLog.info('Test notification sent')
+  })
+
   ipcMain.handle('update-invoice-status', async (_event, ksefNumber: string, status: string) => {
     await dbReady
     updateInvoiceStatus(ksefNumber, status)
@@ -544,7 +555,7 @@ declare module 'electron' {
 app.whenReady().then(async () => {
   const config = getConfig()
   apiClient = new KsefApiClient(config, appLog)
-  scheduler = new InvoiceScheduler(apiClient)
+  scheduler = new InvoiceScheduler(apiClient, appLog)
 
   // Register IPC handlers FIRST so renderer never gets "No handler registered"
   setupIpcHandlers()

@@ -520,6 +520,22 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
         </CardContent>
       </Card>
 
+      {/* Test notification */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>Powiadomienia</Typography>
+          <Button
+            variant="outlined"
+            onClick={() => window.api.testNotification()}
+          >
+            Test powiadomienia
+          </Button>
+          <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
+            Wyślij testowe powiadomienie z dźwiękiem
+          </Typography>
+        </CardContent>
+      </Card>
+
       {/* Save button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button

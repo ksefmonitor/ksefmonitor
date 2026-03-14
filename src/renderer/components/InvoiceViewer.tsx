@@ -138,10 +138,10 @@ function parseInvoiceXml(xml: string): ParsedInvoice | null {
         description: getTextContent(w, 'P_7'),
         unit: getTextContent(w, 'P_8A'),
         quantity: getTextContent(w, 'P_8B'),
-        unitPrice: getTextContent(w, 'P_9A'),
+        unitPrice: getTextContent(w, 'P_9A') || getTextContent(w, 'P_9B'),
         discount: getTextContent(w, 'P_10'),
         netAmount: getTextContent(w, 'P_11'),
-        vatAmount: getTextContent(w, 'P_11Vat'),
+        vatAmount: getTextContent(w, 'P_11Vat') || getTextContent(w, 'P_11A'),
         vatRate: getTextContent(w, 'P_12')
       })
     }
@@ -194,7 +194,7 @@ function parseInvoiceXml(xml: string): ParsedInvoice | null {
       currency: fa ? getTextContent(fa, 'KodWaluty') : 'PLN',
       issueDate: fa ? getTextContent(fa, 'P_1') : '',
       invoiceNumber: fa ? getTextContent(fa, 'P_2') : '',
-      periodFrom: fa ? getNestedText(fa, 'OkresFa', 'P_6_Od') : '',
+      periodFrom: fa ? (getNestedText(fa, 'OkresFa', 'P_6_Od') || getTextContent(fa, 'P_6')) : '',
       periodTo: fa ? getNestedText(fa, 'OkresFa', 'P_6_Do') : '',
       totalNet: fa ? getTextContent(fa, 'P_13_1') : '',
       totalVat: fa ? getTextContent(fa, 'P_14_1') : '',

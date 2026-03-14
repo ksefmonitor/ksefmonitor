@@ -176,6 +176,7 @@ export interface IpcApi {
   saveInvoiceXml: (ksefNumber: string, xmlContent: string) => Promise<string | null>
   updateInvoiceStatus: (ksefNumber: string, status: string) => Promise<void>
   exportInvoicesXlsx: (invoices: InvoiceMetadata[]) => Promise<string | null>
+  testNotification: () => Promise<void>
 }
 
 declare global {

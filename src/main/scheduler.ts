@@ -1,15 +1,24 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, Notification, shell } from 'electron'
 import { KsefApiClient } from './ksef-api'
 import { getConfig, getLastCheckDate, setLastCheckDate } from './store'
+import { upsertInvoices } from './database'
 import type { InvoiceMetadata } from '../shared/types'
+
+interface Logger {
+  info: (...args: unknown[]) => void
+  warn: (...args: unknown[]) => void
+  error: (...args: unknown[]) => void
+}
 
 export class InvoiceScheduler {
   private intervalId: ReturnType<typeof setInterval> | null = null
   private apiClient: KsefApiClient
   private mainWindow: BrowserWindow | null = null
+  private log: Logger
 
-  constructor(apiClient: KsefApiClient) {
+  constructor(apiClient: KsefApiClient, log?: Logger) {
     this.apiClient = apiClient
+    this.log = log || { info: console.log, warn: console.warn, error: console.error }
   }
 
   setMainWindow(window: BrowserWindow): void {
@@ -28,6 +37,7 @@ export class InvoiceScheduler {
     }
 
     const intervalMs = config.checkIntervalMinutes * 60 * 1000
+    this.log.info(`Scheduler started. Checking every ${config.checkIntervalMinutes} min`)
 
     // Run immediately on start
     this.checkForNewInvoices()
@@ -41,6 +51,7 @@ export class InvoiceScheduler {
     if (this.intervalId) {
       clearInterval(this.intervalId)
       this.intervalId = null
+      this.log.info('Scheduler stopped')
     }
   }
 
@@ -56,23 +67,47 @@ export class InvoiceScheduler {
   }
 
   private async checkForNewInvoices(): Promise<void> {
+    this.log.info('Scheduler: checking for new invoices...')
     try {
       const lastCheck = getLastCheckDate()
       const response = await this.apiClient.checkNewInvoices(lastCheck)
 
-      if (response.invoices && response.invoices.length > 0) {
-        this.notifyNewInvoices(response.invoices)
+      const invoices = response.invoices || []
+      this.log.info(`Scheduler: found ${invoices.length} invoices since ${lastCheck}`)
+
+      if (invoices.length > 0) {
+        // Save to local DB
+        try {
+          upsertInvoices(invoices, 'Subject2')
+          this.log.info(`Scheduler: saved ${invoices.length} invoices to local DB`)
+        } catch (dbErr: any) {
+          this.log.error(`Scheduler: DB save error: ${dbErr.message}`)
+        }
+
+        this.notifyNewInvoices(invoices)
       }
 
       setLastCheckDate(new Date().toISOString())
-    } catch (error) {
-      console.error('Error checking for new invoices:', error)
+    } catch (error: any) {
+      this.log.error(`Scheduler: error checking invoices: ${error.message}`)
     }
   }
 
   private notifyNewInvoices(invoices: InvoiceMetadata[]): void {
+    // Send to renderer
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('new-invoices', invoices)
     }
+
+    // System notification with sound
+    const notification = new Notification({
+      title: 'KSeF Monitor - Nowe faktury',
+      body: `Znaleziono ${invoices.length} nowych faktur`,
+      silent: false // play system notification sound
+    })
+    notification.show()
+
+    // Additional beep
+    shell.beep()
   }
 }
