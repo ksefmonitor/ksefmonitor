@@ -366,6 +366,17 @@ export function setSyncState(key: string, value: string): void {
   saveToFile()
 }
 
+export function clearAllData(): { deleted: number } {
+  const database = getDb()
+  const countRow = queryOne('SELECT COUNT(*) as cnt FROM invoices')
+  const count = (countRow?.cnt as number) || 0
+  database.run('DELETE FROM invoices')
+  database.run('DELETE FROM invoice_xml')
+  database.run('DELETE FROM sync_state')
+  saveToFile()
+  return { deleted: count }
+}
+
 export function closeDatabase(): void {
   if (db) {
     saveToFile()

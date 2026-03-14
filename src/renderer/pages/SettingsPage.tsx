@@ -57,6 +57,9 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
   // Per-company token visibility
   const [visibleTokens, setVisibleTokens] = useState<Record<number, boolean>>({})
 
+  // Local stats
+  const [localStats, setLocalStats] = useState<{ count: number } | null>(null)
+
   // PIN
   const [hasPin, setHasPin] = useState(false)
   const [pinInput, setPinInput] = useState('')
@@ -67,6 +70,7 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
     window.api.getConfig().then(setConfig)
     window.api.getAppVersion().then(setAppVersion)
     window.api.hasAppPin().then(setHasPin)
+    window.api.getLocalStats().then(s => setLocalStats({ count: s.count }))
   }, [])
 
   async function handleSave() {
@@ -546,6 +550,27 @@ export function SettingsPage({ onThemeChange }: SettingsPageProps) {
           <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
             Wyślij testowe powiadomienie systemowe z dźwiękiem
           </Typography>
+        </CardContent>
+      </Card>
+
+      {/* Clear data */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2, color: 'error.main' }}>Dane lokalne</Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            Usuń wszystkie faktury, pliki XML i stan synchronizacji z lokalnej bazy danych. Tej operacji nie można cofnąć.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={async () => {
+              if (!confirm('Czy na pewno chcesz usunąć WSZYSTKIE dane z lokalnej bazy? Tej operacji nie można cofnąć.')) return
+              const result = await window.api.clearAllData()
+              setSaved(true)
+            }}
+          >
+            Wyczyść wszystkie dane ({localStats?.count || 0} faktur)
+          </Button>
         </CardContent>
       </Card>
 

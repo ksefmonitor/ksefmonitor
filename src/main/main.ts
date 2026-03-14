@@ -7,7 +7,7 @@ import { getConfig, saveConfig, hasAppPin, verifyAppPin, setAppPin } from './sto
 import {
   initDatabase, upsertInvoices, saveInvoiceXmlToDb, getInvoiceXmlFromDb,
   queryLocalInvoices, getLocalStats, getSyncState, setSyncState, closeDatabase,
-  updateInvoiceStatus, updateInvoiceStatusBulk
+  updateInvoiceStatus, updateInvoiceStatusBulk, clearAllData
 } from './database'
 import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata, LogEntry, SubjectType } from '../shared/types'
 
@@ -403,8 +403,18 @@ function setupIpcHandlers(): void {
     return appLogs
   })
 
-  ipcMain.handle('test-notification', () => {
+  ipcMain.handle('test-notification', async () => {
     showNotification('KSeF Monitor - Test', 'Powiadomienia działają poprawnie!')
+    // Also show dialog as immediate confirmation
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Test powiadomienia',
+        message: 'Powiadomienie wysłane!',
+        detail: 'Sprawdź zasobnik systemowy (tray) — powinien pojawić się dymek z powiadomieniem.',
+        buttons: ['OK']
+      })
+    }
     appLog.info('Test notification sent')
     return { ok: true }
   })
@@ -417,6 +427,13 @@ function setupIpcHandlers(): void {
   ipcMain.handle('has-app-pin', () => hasAppPin())
   ipcMain.handle('verify-pin', (_event, pin: string) => verifyAppPin(pin))
   ipcMain.handle('set-app-pin', (_event, pin: string) => setAppPin(pin))
+
+  ipcMain.handle('clear-all-data', async () => {
+    await dbReady
+    const result = clearAllData()
+    appLog.info(`Cleared all data: ${result.deleted} invoices deleted`)
+    return result
+  })
 
   ipcMain.handle('update-invoice-status-bulk', async (_event, ksefNumbers: string[], status: string) => {
     await dbReady
