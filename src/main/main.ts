@@ -426,14 +426,14 @@ function setupIpcHandlers(): void {
   ipcMain.handle('export-invoices-xlsx', async (_event, invoices: InvoiceMetadata[]) => {
     if (!mainWindow) return null
     const result = await dialog.showSaveDialog(mainWindow, {
-      defaultPath: `faktury_${new Date().toISOString().split('T')[0]}.xlsx`,
-      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+      defaultPath: `faktury_${new Date().toISOString().split('T')[0]}.csv`,
+      filters: [{ name: 'CSV (Excel)', extensions: ['csv'] }]
     })
     if (result.canceled || !result.filePath) return null
 
     try {
-      const { buildXlsx } = await import('./xlsx-builder')
-      const xlsxBuffer = buildXlsx(invoices)
+      const { buildCsv } = await import('./xlsx-builder')
+      const xlsxBuffer = buildCsv(invoices)
       const fsSync = await import('fs')
       fsSync.writeFileSync(result.filePath!, xlsxBuffer)
       appLog.info(`Exported ${invoices.length} invoices to ${result.filePath}`)
