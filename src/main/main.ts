@@ -57,6 +57,18 @@ export const appLog = {
   }
 }
 
+function showNotification(title: string, body: string): void {
+  // Use tray balloon - works reliably on Windows without AppUserModelId issues
+  if (tray) {
+    tray.displayBalloon({
+      title,
+      content: body,
+      iconType: 'info'
+    })
+  }
+  shell.beep()
+}
+
 function getResourcePath(filename: string): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'resources', filename)
@@ -209,6 +221,7 @@ function createWindow(): void {
 
   if (scheduler) {
     scheduler.setMainWindow(mainWindow)
+    if (tray) scheduler.setTray(tray)
   }
 }
 
@@ -391,23 +404,9 @@ function setupIpcHandlers(): void {
   })
 
   ipcMain.handle('test-notification', () => {
-    try {
-      if (Notification.isSupported()) {
-        const notification = new Notification({
-          title: 'KSeF Monitor - Test',
-          body: 'Powiadomienia działają poprawnie!',
-          silent: false
-        })
-        notification.show()
-      }
-      shell.beep()
-      appLog.info('Test notification sent')
-      return { ok: true }
-    } catch (err: any) {
-      appLog.error('Notification error: ' + err.message)
-      shell.beep()
-      return { ok: false, error: err.message }
-    }
+    showNotification('KSeF Monitor - Test', 'Powiadomienia działają poprawnie!')
+    appLog.info('Test notification sent')
+    return { ok: true }
   })
 
   ipcMain.handle('update-invoice-status', async (_event, ksefNumber: string, status: string) => {
@@ -533,20 +532,14 @@ function setupAutoUpdater(): void {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-available', { version: info.version })
     }
-    new Notification({
-      title: 'KSeF Monitor - Aktualizacja',
-      body: `Dostępna nowa wersja ${info.version}. Pobieranie...`
-    }).show()
+    showNotification('KSeF Monitor - Aktualizacja', `Dostępna nowa wersja ${info.version}. Pobieranie...`)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-downloaded', { version: info.version })
     }
-    new Notification({
-      title: 'KSeF Monitor - Aktualizacja',
-      body: `Wersja ${info.version} pobrana. Zostanie zainstalowana po restarcie.`
-    }).show()
+    showNotification('KSeF Monitor - Aktualizacja', `Wersja ${info.version} pobrana. Zostanie zainstalowana po restarcie.`)
   })
 
   autoUpdater.on('error', (error) => {
