@@ -94,7 +94,8 @@ export function DashboardPage() {
       const status = await window.api.getAutoCheckStatus()
       setAutoCheckRunning(status)
 
-      if (!config.token) {
+      const activeCompany = config.companies?.[config.activeCompanyIndex]
+      if (!activeCompany?.token) {
         setHasToken(false)
         setLoading(false)
         return

@@ -7,6 +7,7 @@ import { InvoicesPage } from './pages/InvoicesPage'
 import { SummaryPage } from './pages/SummaryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { LogsPage } from './pages/LogsPage'
 import type { AppConfig, InvoiceMetadata } from '../shared/types'
 
 export default function App() {
@@ -77,6 +78,7 @@ export default function App() {
                 }
               />
               <Route path="/summary" element={<SummaryPage />} />
+              <Route path="/logs" element={<LogsPage />} />
               <Route
                 path="/settings"
                 element={<SettingsPage onThemeChange={handleThemeChange} />}

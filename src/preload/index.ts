@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata } from '../shared/types'
+import type { AppConfig, InvoiceQueryFilters, InvoiceMetadata, LogEntry } from '../shared/types'
 
 const api = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
@@ -31,12 +31,22 @@ const api = {
     ipcRenderer.invoke('install-update')
   },
 
+  getAppLogs: (): Promise<LogEntry[]> => ipcRenderer.invoke('get-app-logs'),
+
   onNewInvoices: (callback: (invoices: InvoiceMetadata[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, invoices: InvoiceMetadata[]) => {
       callback(invoices)
     }
     ipcRenderer.on('new-invoices', handler)
     return () => ipcRenderer.removeListener('new-invoices', handler)
+  },
+
+  onNewLog: (callback: (entry: LogEntry) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, entry: LogEntry) => {
+      callback(entry)
+    }
+    ipcRenderer.on('new-log', handler)
+    return () => ipcRenderer.removeListener('new-log', handler)
   },
 
   onUpdateAvailable: (callback: (info: { version: string }) => void): (() => void) => {

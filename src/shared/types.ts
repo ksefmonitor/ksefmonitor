@@ -1,21 +1,42 @@
 // KSeF API Types
 
+/** Extract NIP from a KSeF token string. Token format: XXXXXXXX-EC-...|nip-XXXXXXXXXX|... */
+export function extractNipFromToken(token: string): string {
+  const match = token.match(/\|nip-(\d+)\|/)
+  return match ? match[1] : ''
+}
+
+export interface CompanyConfig {
+  name: string
+  token: string
+  nip: string // auto-extracted from token
+}
+
 export interface AppConfig {
   apiUrl: string
-  token: string
-  nip: string
+  companies: CompanyConfig[]
+  activeCompanyIndex: number
   checkIntervalMinutes: number
   autoCheckEnabled: boolean
   theme: 'light' | 'dark'
+  // Legacy fields kept for backward compat migration
+  token?: string
+  nip?: string
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
   apiUrl: 'https://api.ksef.mf.gov.pl/v2',
-  token: '',
-  nip: '',
+  companies: [],
+  activeCompanyIndex: 0,
   checkIntervalMinutes: 15,
   autoCheckEnabled: true,
   theme: 'dark'
+}
+
+export interface LogEntry {
+  timestamp: string
+  level: 'info' | 'warn' | 'error'
+  message: string
 }
 
 // Auth
@@ -132,7 +153,9 @@ export interface IpcApi {
   stopAutoCheck: () => Promise<void>
   getAutoCheckStatus: () => Promise<boolean>
   checkForUpdates: () => Promise<void>
+  getAppLogs: () => Promise<LogEntry[]>
   onNewInvoices: (callback: (invoices: InvoiceMetadata[]) => void) => () => void
+  onNewLog: (callback: (entry: LogEntry) => void) => () => void
   onUpdateAvailable: (callback: (info: { version: string }) => void) => () => void
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void
   installUpdate: () => void

@@ -4,13 +4,52 @@ import path from 'path'
 import { KsefApiClient } from './ksef-api'
 import { InvoiceScheduler } from './scheduler'
 import { getConfig, saveConfig } from './store'
-import type { AppConfig, InvoiceQueryFilters } from '../shared/types'
+import type { AppConfig, InvoiceQueryFilters, LogEntry } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let apiClient: KsefApiClient
 let scheduler: InvoiceScheduler
 const isDev = !app.isPackaged
+
+// ─── In-memory log storage ────────────────────────────────────────────────────
+const MAX_LOGS = 500
+const appLogs: LogEntry[] = []
+
+function addLog(level: 'info' | 'warn' | 'error', message: string): void {
+  const entry: LogEntry = {
+    timestamp: new Date().toISOString(),
+    level,
+    message
+  }
+  appLogs.push(entry)
+  if (appLogs.length > MAX_LOGS) {
+    appLogs.splice(0, appLogs.length - MAX_LOGS)
+  }
+  // Notify renderer
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('new-log', entry)
+  }
+}
+
+// Override ksef-api log object to also store logs
+export const appLog = {
+  info: (...args: unknown[]) => {
+    const msg = args.map(String).join(' ')
+    console.log('[KSeF]', ...args)
+    addLog('info', msg)
+  },
+  warn: (...args: unknown[]) => {
+    const msg = args.map(String).join(' ')
+    console.warn('[KSeF]', ...args)
+    addLog('warn', msg)
+  },
+  error: (...args: unknown[]) => {
+    const msg = args.map(String).join(' ')
+    console.error('[KSeF]', ...args)
+    addLog('error', msg)
+  }
+}
 
 function getResourcePath(filename: string): string {
   if (app.isPackaged) {
@@ -100,8 +139,17 @@ function showMainWindow(): void {
   }
 }
 
+function getTitleBarColors(theme: string): { color: string; symbolColor: string } {
+  if (theme === 'light') {
+    return { color: '#FFFFFF', symbolColor: '#1A1A2E' }
+  }
+  return { color: '#1a1a2e', symbolColor: '#e0e0e0' }
+}
+
 function createWindow(): void {
   const appIconPath = getResourcePath('icon.ico')
+  const config = getConfig()
+  const titleBarColors = getTitleBarColors(config.theme)
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -112,11 +160,10 @@ function createWindow(): void {
     frame: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#1a1a2e',
-      symbolColor: '#e0e0e0',
+      ...titleBarColors,
       height: 40
     },
-    backgroundColor: '#1a1a2e',
+    backgroundColor: config.theme === 'light' ? '#F5F5FA' : '#1a1a2e',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -167,11 +214,21 @@ function setupIpcHandlers(): void {
     apiClient.updateConfig(config)
     scheduler.restart()
     updateTrayMenu()
+
+    // Update title bar colors when theme changes
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const colors = getTitleBarColors(config.theme)
+      mainWindow.setTitleBarOverlay({
+        ...colors,
+        height: 40
+      })
+    }
   })
 
   ipcMain.handle('query-invoices', async (_event, filters: InvoiceQueryFilters) => {
     const config = getConfig()
-    if (!config.token) {
+    const activeCompany = config.companies[config.activeCompanyIndex]
+    if (!activeCompany?.token) {
       return { invoices: [], hasMore: false, isTruncated: false, permanentStorageHwmDate: '' }
     }
     return apiClient.queryInvoices(filters)
@@ -224,6 +281,10 @@ function setupIpcHandlers(): void {
       return result.filePath
     }
     return null
+  })
+
+  ipcMain.handle('get-app-logs', () => {
+    return appLogs
   })
 }
 
@@ -280,7 +341,7 @@ declare module 'electron' {
 
 app.whenReady().then(() => {
   const config = getConfig()
-  apiClient = new KsefApiClient(config)
+  apiClient = new KsefApiClient(config, appLog)
   scheduler = new InvoiceScheduler(apiClient)
 
   setupIpcHandlers()
@@ -288,8 +349,9 @@ app.whenReady().then(() => {
   createTray()
   createWindow()
 
-  // Start auto-check if enabled and token is set
-  if (config.autoCheckEnabled && config.token) {
+  // Start auto-check if enabled and active company has a token
+  const activeCompany = config.companies[config.activeCompanyIndex]
+  if (config.autoCheckEnabled && activeCompany?.token) {
     scheduler.start()
   }
 

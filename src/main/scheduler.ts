@@ -22,7 +22,8 @@ export class InvoiceScheduler {
     }
 
     const config = getConfig()
-    if (!config.autoCheckEnabled || !config.token) {
+    const activeCompany = config.companies?.[config.activeCompanyIndex]
+    if (!config.autoCheckEnabled || !activeCompany?.token) {
       return
     }
 

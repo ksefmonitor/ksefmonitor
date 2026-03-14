@@ -54,7 +54,13 @@ interface TokenRefreshResponse {
   }
 }
 
-const log = {
+interface Logger {
+  info: (...args: unknown[]) => void
+  warn: (...args: unknown[]) => void
+  error: (...args: unknown[]) => void
+}
+
+const defaultLog: Logger = {
   info: (...args: unknown[]) => console.log('[KSeF]', ...args),
   warn: (...args: unknown[]) => console.warn('[KSeF]', ...args),
   error: (...args: unknown[]) => console.error('[KSeF]', ...args)
@@ -67,13 +73,27 @@ export class KsefApiClient {
   private refreshToken: string | null = null
   private refreshTokenValidUntil: Date | null = null
   private authInProgress: Promise<void> | null = null
+  private log: Logger
 
-  constructor(config: AppConfig) {
+  // Derived from active company
+  private ksefToken: string = ''
+  private nip: string = ''
+
+  constructor(config: AppConfig, log?: Logger) {
     this.config = config
+    this.log = log || defaultLog
+    this.extractActiveCompany()
+  }
+
+  private extractActiveCompany(): void {
+    const company = this.config.companies?.[this.config.activeCompanyIndex]
+    this.ksefToken = company?.token || ''
+    this.nip = company?.nip || ''
   }
 
   updateConfig(config: AppConfig): void {
     this.config = config
+    this.extractActiveCompany()
     // Reset auth state when config changes — forces re-authentication
     this.accessToken = null
     this.accessTokenValidUntil = null
@@ -195,7 +215,7 @@ export class KsefApiClient {
     }
 
     // No valid tokens — do full auth
-    if (!this.config.token || !this.config.nip) {
+    if (!this.ksefToken || !this.nip) {
       throw new Error('KSeF token and NIP must be configured before making API calls')
     }
 
@@ -206,7 +226,7 @@ export class KsefApiClient {
 
   /** Step 9: Refresh access token using refresh token */
   private async refreshAccessToken(): Promise<void> {
-    log.info('Refreshing access token...')
+    this.log.info('Refreshing access token...')
     const url = `${this.baseUrl}/auth/token/refresh`
     const result = await this.rawRequest<TokenRefreshResponse>(
       'POST',
@@ -216,7 +236,7 @@ export class KsefApiClient {
     )
 
     if (result.statusCode < 200 || result.statusCode >= 300) {
-      log.warn('Token refresh failed, performing full re-auth:', result.raw)
+      this.log.warn('Token refresh failed, performing full re-auth:', result.raw)
       // Clear state and fall through to full auth
       this.accessToken = null
       this.refreshToken = null
@@ -226,12 +246,12 @@ export class KsefApiClient {
 
     this.accessToken = result.data.accessToken.token
     this.accessTokenValidUntil = new Date(result.data.accessToken.validUntil)
-    log.info('Access token refreshed, valid until', this.accessTokenValidUntil.toISOString())
+    this.log.info('Access token refreshed, valid until', this.accessTokenValidUntil.toISOString())
   }
 
   /** Steps 1-8: Full authentication flow */
   private async performFullAuth(): Promise<void> {
-    log.info('Starting full KSeF authentication flow...')
+    this.log.info('Starting full KSeF authentication flow...')
 
     // Step 1: Get MF public key certificate
     const publicKey = await this.fetchPublicKey()
@@ -240,12 +260,12 @@ export class KsefApiClient {
     const { challenge, timestampMs } = await this.fetchChallenge()
 
     // Step 3: Encrypt "{ksefToken}|{timestampMs}" with RSA-OAEP SHA-256
-    const encryptedToken = this.encryptToken(this.config.token, timestampMs, publicKey)
+    const encryptedToken = this.encryptToken(this.ksefToken, timestampMs, publicKey)
 
     // Step 4: Authenticate with KSeF token
     const { referenceNumber, authenticationToken } = await this.authenticateWithToken(
       challenge,
-      this.config.nip,
+      this.nip,
       encryptedToken
     )
 
@@ -261,7 +281,7 @@ export class KsefApiClient {
     this.refreshToken = tokens.refreshToken.token
     this.refreshTokenValidUntil = new Date(tokens.refreshToken.validUntil)
 
-    log.info(
+    this.log.info(
       'Authentication complete. Access token valid until',
       this.accessTokenValidUntil.toISOString()
     )
@@ -269,7 +289,7 @@ export class KsefApiClient {
 
   /** Step 1: Fetch the MF public key certificate and extract the RSA public key */
   private async fetchPublicKey(): Promise<crypto.KeyObject> {
-    log.info('Fetching MF public key certificate...')
+    this.log.info('Fetching MF public key certificate...')
     const url = `${this.baseUrl}/security/public-key-certificates`
     const result = await this.rawRequest<PublicKeyCertificate[]>('GET', url)
 
@@ -291,7 +311,7 @@ export class KsefApiClient {
     })
 
     const cert = validCert ?? certs[0]
-    log.info('Using certificate valid from', cert.validFrom, 'to', cert.validTo)
+    this.log.info('Using certificate valid from', cert.validFrom, 'to', cert.validTo)
 
     // The certificate field is base64-encoded DER (X.509)
     const derBuffer = Buffer.from(cert.certificate, 'base64')
@@ -311,7 +331,7 @@ export class KsefApiClient {
 
   /** Step 2: Request a challenge from KSeF */
   private async fetchChallenge(): Promise<{ challenge: string; timestampMs: number }> {
-    log.info('Requesting auth challenge...')
+    this.log.info('Requesting auth challenge...')
     const url = `${this.baseUrl}/auth/challenge`
     const result = await this.rawRequest<ChallengeResponse>('POST', url)
 
@@ -320,7 +340,7 @@ export class KsefApiClient {
     }
 
     const { challenge, timestampMs } = result.data
-    log.info('Challenge received:', challenge.substring(0, 16) + '...')
+    this.log.info('Challenge received:', challenge.substring(0, 16) + '...')
 
     return { challenge, timestampMs }
   }
@@ -349,7 +369,7 @@ export class KsefApiClient {
     nip: string,
     encryptedToken: string
   ): Promise<KsefTokenAuthResponse> {
-    log.info('Authenticating with KSeF token...')
+    this.log.info('Authenticating with KSeF token...')
     const url = `${this.baseUrl}/auth/ksef-token`
     const result = await this.rawRequest<KsefTokenAuthResponse>('POST', url, {
       challenge,
@@ -364,7 +384,7 @@ export class KsefApiClient {
       throw new Error(`KSeF token authentication failed: ${result.raw}`)
     }
 
-    log.info('Auth submitted, reference:', result.data.referenceNumber)
+    this.log.info('Auth submitted, reference:', result.data.referenceNumber)
     return result.data
   }
 
@@ -373,7 +393,7 @@ export class KsefApiClient {
     referenceNumber: string,
     authenticationToken: string
   ): Promise<void> {
-    log.info('Polling auth status for reference:', referenceNumber)
+    this.log.info('Polling auth status for reference:', referenceNumber)
     const url = `${this.baseUrl}/auth/${encodeURIComponent(referenceNumber)}`
     const maxAttempts = 30
     const pollIntervalMs = 2000
@@ -386,11 +406,11 @@ export class KsefApiClient {
       if (result.statusCode >= 200 && result.statusCode < 300) {
         const statusCode = result.data?.status?.code
         if (statusCode === 200) {
-          log.info('Auth processing complete after', attempt, 'poll(s)')
+          this.log.info('Auth processing complete after', attempt, 'poll(s)')
           return
         }
         if (statusCode === 100) {
-          log.info(`Auth still processing (attempt ${attempt}/${maxAttempts})...`)
+          this.log.info(`Auth still processing (attempt ${attempt}/${maxAttempts})...`)
           await this.sleep(pollIntervalMs)
           continue
         }
@@ -400,7 +420,7 @@ export class KsefApiClient {
           )
         }
         // Unknown status, keep polling
-        log.info(`Auth status code ${statusCode} (attempt ${attempt}/${maxAttempts})...`)
+        this.log.info(`Auth status code ${statusCode} (attempt ${attempt}/${maxAttempts})...`)
         await this.sleep(pollIntervalMs)
         continue
       }
@@ -417,7 +437,7 @@ export class KsefApiClient {
 
   /** Step 7: Redeem authentication token for access + refresh tokens */
   private async redeemToken(authenticationToken: string): Promise<TokenRedeemResponse> {
-    log.info('Redeeming authentication token...')
+    this.log.info('Redeeming authentication token...')
     const url = `${this.baseUrl}/auth/token/redeem`
     const result = await this.rawRequest<TokenRedeemResponse>('POST', url, undefined, {
       Authorization: `Bearer ${authenticationToken}`
@@ -427,7 +447,7 @@ export class KsefApiClient {
       throw new Error(`Token redemption failed: ${result.raw}`)
     }
 
-    log.info('Token redeemed successfully')
+    this.log.info('Token redeemed successfully')
     return result.data
   }
 
