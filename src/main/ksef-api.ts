@@ -444,12 +444,12 @@ export class KsefApiClient {
       // So the canonical form has xmlns:ds on SignedInfo itself
       const signedInfoCanonical =
         '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
-        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:CanonicalizationMethod>' +
+        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:CanonicalizationMethod>' +
         '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></ds:SignatureMethod>' +
         '<ds:Reference URI="">' +
         '<ds:Transforms>' +
         '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
-        '<ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:Transform>' +
+        '<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:Transform>' +
         '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
@@ -466,12 +466,12 @@ export class KsefApiClient {
       const signatureXml =
         '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
         '<ds:SignedInfo>' +
-        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:CanonicalizationMethod>' +
+        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:CanonicalizationMethod>' +
         '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"></ds:SignatureMethod>' +
         '<ds:Reference URI="">' +
         '<ds:Transforms>' +
         '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
-        '<ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></ds:Transform>' +
+        '<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:Transform>' +
         '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
