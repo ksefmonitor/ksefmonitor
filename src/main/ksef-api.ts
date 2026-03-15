@@ -476,8 +476,24 @@ export class KsefApiClient {
         '</xades:SignedSignatureProperties>' +
         '</xades:SignedProperties>'
 
-      // 2. Digest of SignedProperties
-      const spDigest = crypto.createHash('sha256').update(signedProperties, 'utf-8').digest('base64')
+      // 2. Digest of SignedProperties (canonical form with inherited namespaces)
+      // When KSeF extracts SignedProperties from DOM, exc-c14n adds visibly utilized ns prefixes
+      const signedPropertiesCanonical =
+        '<xades:SignedProperties xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Id="' + spId + '">' +
+        '<xades:SignedSignatureProperties>' +
+        '<xades:SigningTime>' + signingTime + '</xades:SigningTime>' +
+        '<xades:SigningCertificateV2>' +
+        '<xades:Cert>' +
+        '<xades:CertDigest>' +
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
+        '<ds:DigestValue>' + certDigest + '</ds:DigestValue>' +
+        '</xades:CertDigest>' +
+        '<xades:IssuerSerialV2>' + certBase64IssuerSerial + '</xades:IssuerSerialV2>' +
+        '</xades:Cert>' +
+        '</xades:SigningCertificateV2>' +
+        '</xades:SignedSignatureProperties>' +
+        '</xades:SignedProperties>'
+      const spDigest = crypto.createHash('sha256').update(signedPropertiesCanonical, 'utf-8').digest('base64')
 
       // 3. Digest of document (enveloped: document without Signature)
       const docDigest = crypto.createHash('sha256').update(xml, 'utf-8').digest('base64')
