@@ -512,6 +512,9 @@ export class KsefApiClient {
         '<ds:DigestValue>' + docDigest + '</ds:DigestValue>' +
         '</ds:Reference>' +
         '<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#' + spId + '">' +
+        '<ds:Transforms>' +
+        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
+        '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + spDigest + '</ds:DigestValue>' +
         '</ds:Reference>' +
@@ -542,6 +545,9 @@ export class KsefApiClient {
         '<ds:DigestValue>' + docDigest + '</ds:DigestValue>' +
         '</ds:Reference>' +
         '<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#' + spId + '">' +
+        '<ds:Transforms>' +
+        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
+        '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + spDigest + '</ds:DigestValue>' +
         '</ds:Reference>' +
