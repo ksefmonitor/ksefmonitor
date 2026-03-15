@@ -314,8 +314,7 @@ export class KsefApiClient {
         '\n-----END CERTIFICATE-----'
     }
 
-    // Build AuthTokenRequest XML — no indentation, no XML declaration
-    // C14N requires consistent serialization; no formatting = no ambiguity
+    // Build AuthTokenRequest XML — canonical single-line, no indentation
     const authTokenXml =
       '<AuthTokenRequest xmlns="http://ksef.mf.gov.pl/auth/token/2.0">' +
       '<Challenge>' + challenge + '</Challenge>' +
@@ -444,15 +443,17 @@ export class KsefApiClient {
         .replace(/\s/g, '')
 
       // Build canonical SignedInfo (what KSeF will extract and verify)
-      // exc-c14n on <ds:SignedInfo> inside <ds:Signature xmlns:ds="..."> → xmlns:ds propagated
+      // Using inclusive C14N — includes ALL in-scope namespaces:
+      // xmlns (from AuthTokenRequest) + xmlns:ds (from Signature)
+      const c14nAlgo = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315'
       const signedInfoCanonical =
-        '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
-        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:CanonicalizationMethod>' +
+        '<ds:SignedInfo xmlns="http://ksef.mf.gov.pl/auth/token/2.0" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
+        '<ds:CanonicalizationMethod Algorithm="' + c14nAlgo + '"></ds:CanonicalizationMethod>' +
         '<ds:SignatureMethod Algorithm="' + sigMethodUri + '"></ds:SignatureMethod>' +
         '<ds:Reference URI="">' +
         '<ds:Transforms>' +
         '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
-        '<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:Transform>' +
+        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
         '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
@@ -462,13 +463,12 @@ export class KsefApiClient {
       // Sign canonical SignedInfo
       const signer = crypto.createSign(signAlgo)
       signer.update(signedInfoCanonical)
-      // XML-DSIG ECDSA requires IEEE P1363 format (raw r||s), not DER
       const signOpts = isEc
         ? { key: privateKey, dsaEncoding: 'ieee-p1363' as const }
         : privateKey
       const signatureValue = signer.sign(signOpts, 'base64')
 
-      // Self-verify to confirm our signature is correct
+      // Self-verify
       const verifier = crypto.createVerify(signAlgo)
       verifier.update(signedInfoCanonical)
       const pubKey = crypto.createPublicKey(certPem)
@@ -477,22 +477,18 @@ export class KsefApiClient {
         : pubKey
       const selfVerified = verifier.verify(verifyOpts, signatureValue, 'base64')
       this.log.info(`Self-verification: ${selfVerified ? 'PASS' : 'FAIL'}`)
-      if (!selfVerified) {
-        this.log.error('Certificate public key does NOT match private key!')
-      }
-      this.log.info(`Digest: ${digest}`)
-      this.log.info(`SignedInfo to sign (first 200): ${signedInfoCanonical.substring(0, 200)}`)
+      this.log.info(`C14N: inclusive, SignedInfo has xmlns + xmlns:ds`)
 
-      // Build Signature element (SignedInfo without xmlns:ds — inherited from parent)
+      // Build Signature element (SignedInfo inherits xmlns:ds from parent, no xmlns:ds on SignedInfo)
       const signatureXml =
         '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
         '<ds:SignedInfo>' +
-        '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:CanonicalizationMethod>' +
+        '<ds:CanonicalizationMethod Algorithm="' + c14nAlgo + '"></ds:CanonicalizationMethod>' +
         '<ds:SignatureMethod Algorithm="' + sigMethodUri + '"></ds:SignatureMethod>' +
         '<ds:Reference URI="">' +
         '<ds:Transforms>' +
         '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
-        '<ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"></ds:Transform>' +
+        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
         '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
