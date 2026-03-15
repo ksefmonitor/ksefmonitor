@@ -3,6 +3,8 @@ import { AppConfig, DEFAULT_CONFIG, extractNipFromToken } from '../shared/types'
 import { encryptString, decryptString } from './crypto'
 
 const store = new Store<{ config: AppConfig; lastCheckDate: string; appPin: string }>({
+  name: 'config',
+  projectName: 'ksef-monitor',
   defaults: {
     config: DEFAULT_CONFIG,
     lastCheckDate: new Date().toISOString(),

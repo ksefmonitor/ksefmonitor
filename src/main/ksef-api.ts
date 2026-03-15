@@ -433,21 +433,56 @@ export class KsefApiClient {
         : 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
       this.log.info(`Key type: ${keyType}, signature algorithm: ${signAlgo}`)
 
-      // Digest = SHA-256 of document (already canonical — no declaration, no whitespace)
-      const digest = crypto.createHash('sha256').update(xml, 'utf-8').digest('base64')
+      // ─── XAdES-BASELINE-B Enveloped Signature ──────────────────────────
+      const c14nAlgo = 'http://www.w3.org/2001/10/xml-exc-c14n#'
+      const sigId = 'Signature-' + Date.now()
+      const spId = 'SignedProperties-' + Date.now()
 
-      // Extract certificate base64
+      // Extract certificate base64 and compute cert digest
       const certBase64 = certPem
         .replace(/-----BEGIN CERTIFICATE-----/g, '')
         .replace(/-----END CERTIFICATE-----/g, '')
         .replace(/\s/g, '')
+      const certDer = Buffer.from(certBase64, 'base64')
+      const certDigest = crypto.createHash('sha256').update(certDer).digest('base64')
 
-      // Build canonical SignedInfo (what KSeF will extract and verify)
-      // Using inclusive C14N — includes ALL in-scope namespaces:
-      // xmlns (from AuthTokenRequest) + xmlns:ds (from Signature)
-      const c14nAlgo = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315'
+      // Get cert issuer and serial from X509
+      const x509 = new crypto.X509Certificate(certPem)
+      const issuerName = x509.issuer
+      const serialNumber = BigInt('0x' + x509.serialNumber).toString()
+
+      // SigningTime (ISO 8601)
+      const signingTime = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+
+      // 1. Build SignedProperties (XAdES)
+      const signedProperties =
+        '<xades:SignedProperties Id="' + spId + '">' +
+        '<xades:SignedSignatureProperties>' +
+        '<xades:SigningTime>' + signingTime + '</xades:SigningTime>' +
+        '<xades:SigningCertificateV2>' +
+        '<xades:Cert>' +
+        '<xades:CertDigest>' +
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
+        '<ds:DigestValue>' + certDigest + '</ds:DigestValue>' +
+        '</xades:CertDigest>' +
+        '<xades:IssuerSerial>' +
+        '<ds:X509IssuerName>' + issuerName + '</ds:X509IssuerName>' +
+        '<ds:X509SerialNumber>' + serialNumber + '</ds:X509SerialNumber>' +
+        '</xades:IssuerSerial>' +
+        '</xades:Cert>' +
+        '</xades:SigningCertificateV2>' +
+        '</xades:SignedSignatureProperties>' +
+        '</xades:SignedProperties>'
+
+      // 2. Digest of SignedProperties
+      const spDigest = crypto.createHash('sha256').update(signedProperties, 'utf-8').digest('base64')
+
+      // 3. Digest of document (enveloped: document without Signature)
+      const docDigest = crypto.createHash('sha256').update(xml, 'utf-8').digest('base64')
+
+      // 4. Build canonical SignedInfo with TWO references
       const signedInfoCanonical =
-        '<ds:SignedInfo xmlns="http://ksef.mf.gov.pl/auth/token/2.0" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
+        '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
         '<ds:CanonicalizationMethod Algorithm="' + c14nAlgo + '"></ds:CanonicalizationMethod>' +
         '<ds:SignatureMethod Algorithm="' + sigMethodUri + '"></ds:SignatureMethod>' +
         '<ds:Reference URI="">' +
@@ -456,11 +491,15 @@ export class KsefApiClient {
         '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
         '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
+        '<ds:DigestValue>' + docDigest + '</ds:DigestValue>' +
+        '</ds:Reference>' +
+        '<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#' + spId + '">' +
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
+        '<ds:DigestValue>' + spDigest + '</ds:DigestValue>' +
         '</ds:Reference>' +
         '</ds:SignedInfo>'
 
-      // Sign canonical SignedInfo
+      // 5. Sign
       const signer = crypto.createSign(signAlgo)
       signer.update(signedInfoCanonical)
       const signOpts = isEc
@@ -468,20 +507,11 @@ export class KsefApiClient {
         : privateKey
       const signatureValue = signer.sign(signOpts, 'base64')
 
-      // Self-verify
-      const verifier = crypto.createVerify(signAlgo)
-      verifier.update(signedInfoCanonical)
-      const pubKey = crypto.createPublicKey(certPem)
-      const verifyOpts = isEc
-        ? { key: pubKey, dsaEncoding: 'ieee-p1363' as const }
-        : pubKey
-      const selfVerified = verifier.verify(verifyOpts, signatureValue, 'base64')
-      this.log.info(`Self-verification: ${selfVerified ? 'PASS' : 'FAIL'}`)
-      this.log.info(`C14N: inclusive, SignedInfo has xmlns + xmlns:ds`)
+      this.log.info(`XAdES-BASELINE-B: signingTime=${signingTime}, certDigest=${certDigest.substring(0, 16)}...`)
 
-      // Build Signature element (SignedInfo inherits xmlns:ds from parent, no xmlns:ds on SignedInfo)
+      // 6. Build complete Signature with QualifyingProperties
       const signatureXml =
-        '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
+        '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="' + sigId + '">' +
         '<ds:SignedInfo>' +
         '<ds:CanonicalizationMethod Algorithm="' + c14nAlgo + '"></ds:CanonicalizationMethod>' +
         '<ds:SignatureMethod Algorithm="' + sigMethodUri + '"></ds:SignatureMethod>' +
@@ -491,7 +521,11 @@ export class KsefApiClient {
         '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
         '</ds:Transforms>' +
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + digest + '</ds:DigestValue>' +
+        '<ds:DigestValue>' + docDigest + '</ds:DigestValue>' +
+        '</ds:Reference>' +
+        '<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#' + spId + '">' +
+        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
+        '<ds:DigestValue>' + spDigest + '</ds:DigestValue>' +
         '</ds:Reference>' +
         '</ds:SignedInfo>' +
         '<ds:SignatureValue>' + signatureValue + '</ds:SignatureValue>' +
@@ -500,9 +534,14 @@ export class KsefApiClient {
         '<ds:X509Certificate>' + certBase64 + '</ds:X509Certificate>' +
         '</ds:X509Data>' +
         '</ds:KeyInfo>' +
+        '<ds:Object>' +
+        '<xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#' + sigId + '">' +
+        signedProperties +
+        '</xades:QualifyingProperties>' +
+        '</ds:Object>' +
         '</ds:Signature>'
 
-      // Insert before closing tag
+      // 7. Insert before closing tag
       const closingTag = '</AuthTokenRequest>'
       const signedXml = xml.replace(closingTag, signatureXml + closingTag)
 
