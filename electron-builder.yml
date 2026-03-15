@@ -8,6 +8,13 @@ files:
   - dist/**/*
   - "!node_modules/**/*"
   - node_modules/sql.js/**/*
+  - node_modules/electron-store/**/*
+  - node_modules/conf/**/*
+  - node_modules/atomically/**/*
+  - node_modules/dot-prop/**/*
+  - node_modules/env-paths/**/*
+  - node_modules/json-schema-typed/**/*
+  - node_modules/type-fest/**/*
 extraResources:
   - from: resources
     to: resources

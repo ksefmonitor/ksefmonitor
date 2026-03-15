@@ -38,6 +38,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0",
-    "sql.js": "^1.14.1"
+    "sql.js": "^1.14.1",
+    "xml-crypto": "^6.1.2"
   }
 }

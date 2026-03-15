@@ -4,13 +4,13 @@ import { encryptString, decryptString } from './crypto'
 
 const store = new Store<{ config: AppConfig; lastCheckDate: string; appPin: string }>({
   name: 'config',
-  projectName: 'ksef-monitor',
   defaults: {
     config: DEFAULT_CONFIG,
     lastCheckDate: new Date().toISOString(),
     appPin: ''
   }
 })
+function getStore() { return store }
 
 // Migrate old config with single token/nip to new companies format
 function migrateConfig(config: AppConfig): AppConfig {
@@ -26,7 +26,7 @@ function migrateConfig(config: AppConfig): AppConfig {
     config.activeCompanyIndex = 0
     delete config.token
     delete config.nip
-    store.set('config', config)
+    getStore().set('config', config)
   }
   if (!config.companies) {
     config.companies = []
@@ -83,14 +83,14 @@ function encryptConfig(config: AppConfig): AppConfig {
 }
 
 export function getConfig(): AppConfig {
-  const raw = store.get('config')
+  const raw = getStore().get('config')
   const migrated = migrateConfig(raw)
   return decryptConfig(migrated)
 }
 
 /** Returns config with encrypted tokens for internal use (ksef-api needs decrypted token) */
 export function getRawConfig(): AppConfig {
-  const raw = store.get('config')
+  const raw = getStore().get('config')
   return migrateConfig(raw)
 }
 
@@ -99,25 +99,25 @@ export function saveConfig(config: AppConfig): void {
 }
 
 export function getLastCheckDate(): string {
-  return store.get('lastCheckDate')
+  return getStore().get('lastCheckDate')
 }
 
 export function setLastCheckDate(date: string): void {
-  store.set('lastCheckDate', date)
+  getStore().set('lastCheckDate', date)
 }
 
 // PIN management
 export function getAppPin(): string {
-  const pin = store.get('appPin')
+  const pin = getStore().get('appPin')
   return pin ? decryptString(pin) : ''
 }
 
 export function setAppPin(pin: string): void {
-  store.set('appPin', pin ? encryptString(pin) : '')
+  getStore().set('appPin', pin ? encryptString(pin) : '')
 }
 
 export function hasAppPin(): boolean {
-  return !!store.get('appPin')
+  return !!getStore().get('appPin')
 }
 
 export function verifyAppPin(input: string): boolean {
@@ -125,4 +125,4 @@ export function verifyAppPin(input: string): boolean {
   return stored === input
 }
 
-export { store }
+export { getStore as store }

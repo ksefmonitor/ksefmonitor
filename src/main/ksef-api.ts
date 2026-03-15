@@ -1,6 +1,7 @@
 import { net } from 'electron'
 import * as crypto from 'crypto'
 import * as fs from 'fs'
+import { SignedXml } from 'xml-crypto'
 import { decryptPkcs8 } from './pkcs8-decrypt'
 import type {
   AppConfig,
@@ -433,127 +434,27 @@ export class KsefApiClient {
         : 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
       this.log.info(`Key type: ${keyType}, signature algorithm: ${signAlgo}`)
 
-      // ─── XAdES-BASELINE-B Enveloped Signature ──────────────────────────
-      const c14nAlgo = 'http://www.w3.org/2001/10/xml-exc-c14n#'
-      const sigId = 'Signature-' + Date.now()
-      const spId = 'SignedProperties-' + Date.now()
+      // Use xml-crypto for proper C14N and signing
+      const keyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
 
-      // Extract certificate base64 and compute cert digest
-      const certBase64 = certPem
-        .replace(/-----BEGIN CERTIFICATE-----/g, '')
-        .replace(/-----END CERTIFICATE-----/g, '')
-        .replace(/\s/g, '')
-      const certDer = Buffer.from(certBase64, 'base64')
-      const certDigest = crypto.createHash('sha256').update(certDer).digest('base64')
+      const sig = new SignedXml({
+        privateKey: keyPem,
+        publicCert: certPem,
+        signatureAlgorithm: sigMethodUri,
+        canonicalizationAlgorithm: 'http://www.w3.org/2001/10/xml-exc-c14n#'
+      })
 
-      // IssuerSerialV2 = base64 of DER-encoded IssuerSerial (RFC 5035)
-      // Contains issuer GeneralNames + serialNumber from the certificate
-      const x509 = new crypto.X509Certificate(certPem)
-      // Build from raw cert: extract issuer + serial as base64 of the raw DER fields
-      // Simplest approach: hash-based (just use the cert hash as IssuerSerialV2 is optional content)
-      // Actually IssuerSerialV2 is a base64 of ESSCertIDv2.issuerSerial which is complex ASN.1
-      // For simplicity, use the raw certificate serial in hex format as base64
-      const serialHex = x509.serialNumber // hex string
-      const certBase64IssuerSerial = Buffer.from(serialHex, 'hex').toString('base64')
+      sig.addReference({
+        uri: '',
+        transforms: [
+          'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+          'http://www.w3.org/2001/10/xml-exc-c14n#'
+        ],
+        digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256'
+      })
 
-      // SigningTime (ISO 8601)
-      const signingTime = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
-
-      // 1. Build SignedProperties (XAdES) — with explicit namespaces on element
-      //    so the raw bytes match the exc-c14n canonical form exactly
-      const signedProperties =
-        '<xades:SignedProperties xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Id="' + spId + '">' +
-        '<xades:SignedSignatureProperties>' +
-        '<xades:SigningTime>' + signingTime + '</xades:SigningTime>' +
-        '<xades:SigningCertificateV2>' +
-        '<xades:Cert>' +
-        '<xades:CertDigest>' +
-        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + certDigest + '</ds:DigestValue>' +
-        '</xades:CertDigest>' +
-        '<xades:IssuerSerialV2>' + certBase64IssuerSerial + '</xades:IssuerSerialV2>' +
-        '</xades:Cert>' +
-        '</xades:SigningCertificateV2>' +
-        '</xades:SignedSignatureProperties>' +
-        '</xades:SignedProperties>'
-
-      // 2. Digest of SignedProperties — element already has namespace declarations
-      //    so raw bytes = exc-c14n canonical form
-      const spDigest = crypto.createHash('sha256').update(signedProperties, 'utf-8').digest('base64')
-
-      // 3. Digest of document (enveloped: document without Signature)
-      const docDigest = crypto.createHash('sha256').update(xml, 'utf-8').digest('base64')
-
-      // 4. Build canonical SignedInfo with TWO references
-      const signedInfoCanonical =
-        '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
-        '<ds:CanonicalizationMethod Algorithm="' + c14nAlgo + '"></ds:CanonicalizationMethod>' +
-        '<ds:SignatureMethod Algorithm="' + sigMethodUri + '"></ds:SignatureMethod>' +
-        '<ds:Reference URI="">' +
-        '<ds:Transforms>' +
-        '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
-        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
-        '</ds:Transforms>' +
-        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + docDigest + '</ds:DigestValue>' +
-        '</ds:Reference>' +
-        '<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#' + spId + '">' +
-        '<ds:Transforms>' +
-        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
-        '</ds:Transforms>' +
-        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + spDigest + '</ds:DigestValue>' +
-        '</ds:Reference>' +
-        '</ds:SignedInfo>'
-
-      // 5. Sign
-      const signer = crypto.createSign(signAlgo)
-      signer.update(signedInfoCanonical)
-      const signOpts = isEc
-        ? { key: privateKey, dsaEncoding: 'ieee-p1363' as const }
-        : privateKey
-      const signatureValue = signer.sign(signOpts, 'base64')
-
-      this.log.info(`XAdES-BASELINE-B: signingTime=${signingTime}, certDigest=${certDigest.substring(0, 16)}...`)
-
-      // 6. Build complete Signature with QualifyingProperties
-      const signatureXml =
-        '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="' + sigId + '">' +
-        '<ds:SignedInfo>' +
-        '<ds:CanonicalizationMethod Algorithm="' + c14nAlgo + '"></ds:CanonicalizationMethod>' +
-        '<ds:SignatureMethod Algorithm="' + sigMethodUri + '"></ds:SignatureMethod>' +
-        '<ds:Reference URI="">' +
-        '<ds:Transforms>' +
-        '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>' +
-        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
-        '</ds:Transforms>' +
-        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + docDigest + '</ds:DigestValue>' +
-        '</ds:Reference>' +
-        '<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#' + spId + '">' +
-        '<ds:Transforms>' +
-        '<ds:Transform Algorithm="' + c14nAlgo + '"></ds:Transform>' +
-        '</ds:Transforms>' +
-        '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
-        '<ds:DigestValue>' + spDigest + '</ds:DigestValue>' +
-        '</ds:Reference>' +
-        '</ds:SignedInfo>' +
-        '<ds:SignatureValue>' + signatureValue + '</ds:SignatureValue>' +
-        '<ds:KeyInfo>' +
-        '<ds:X509Data>' +
-        '<ds:X509Certificate>' + certBase64 + '</ds:X509Certificate>' +
-        '</ds:X509Data>' +
-        '</ds:KeyInfo>' +
-        '<ds:Object>' +
-        '<xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#' + sigId + '">' +
-        signedProperties +
-        '</xades:QualifyingProperties>' +
-        '</ds:Object>' +
-        '</ds:Signature>'
-
-      // 7. Insert before closing tag
-      const closingTag = '</AuthTokenRequest>'
-      const signedXml = xml.replace(closingTag, signatureXml + closingTag)
+      sig.computeSignature(xml)
+      const signedXml = sig.getSignedXml()
 
       this.log.info(`Signed XML length: ${signedXml.length}`)
 
