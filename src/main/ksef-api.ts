@@ -462,7 +462,11 @@ export class KsefApiClient {
       // Sign canonical SignedInfo
       const signer = crypto.createSign(signAlgo)
       signer.update(signedInfoCanonical)
-      const signatureValue = signer.sign(privateKey, 'base64')
+      // XML-DSIG ECDSA requires IEEE P1363 format (raw r||s), not DER
+      const signOpts = isEc
+        ? { key: privateKey, dsaEncoding: 'ieee-p1363' as const }
+        : privateKey
+      const signatureValue = signer.sign(signOpts, 'base64')
 
       // Build Signature element (SignedInfo without xmlns:ds — inherited from parent)
       const signatureXml =
