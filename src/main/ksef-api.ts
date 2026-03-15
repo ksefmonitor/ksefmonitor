@@ -468,6 +468,21 @@ export class KsefApiClient {
         : privateKey
       const signatureValue = signer.sign(signOpts, 'base64')
 
+      // Self-verify to confirm our signature is correct
+      const verifier = crypto.createVerify(signAlgo)
+      verifier.update(signedInfoCanonical)
+      const pubKey = crypto.createPublicKey(certPem)
+      const verifyOpts = isEc
+        ? { key: pubKey, dsaEncoding: 'ieee-p1363' as const }
+        : pubKey
+      const selfVerified = verifier.verify(verifyOpts, signatureValue, 'base64')
+      this.log.info(`Self-verification: ${selfVerified ? 'PASS' : 'FAIL'}`)
+      if (!selfVerified) {
+        this.log.error('Certificate public key does NOT match private key!')
+      }
+      this.log.info(`Digest: ${digest}`)
+      this.log.info(`SignedInfo to sign (first 200): ${signedInfoCanonical.substring(0, 200)}`)
+
       // Build Signature element (SignedInfo without xmlns:ds — inherited from parent)
       const signatureXml =
         '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">' +
