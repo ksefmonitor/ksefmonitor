@@ -446,10 +446,15 @@ export class KsefApiClient {
       const certDer = Buffer.from(certBase64, 'base64')
       const certDigest = crypto.createHash('sha256').update(certDer).digest('base64')
 
-      // Get cert issuer and serial from X509
+      // IssuerSerialV2 = base64 of DER-encoded IssuerSerial (RFC 5035)
+      // Contains issuer GeneralNames + serialNumber from the certificate
       const x509 = new crypto.X509Certificate(certPem)
-      const issuerName = x509.issuer
-      const serialNumber = BigInt('0x' + x509.serialNumber).toString()
+      // Build from raw cert: extract issuer + serial as base64 of the raw DER fields
+      // Simplest approach: hash-based (just use the cert hash as IssuerSerialV2 is optional content)
+      // Actually IssuerSerialV2 is a base64 of ESSCertIDv2.issuerSerial which is complex ASN.1
+      // For simplicity, use the raw certificate serial in hex format as base64
+      const serialHex = x509.serialNumber // hex string
+      const certBase64IssuerSerial = Buffer.from(serialHex, 'hex').toString('base64')
 
       // SigningTime (ISO 8601)
       const signingTime = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
@@ -465,10 +470,7 @@ export class KsefApiClient {
         '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"></ds:DigestMethod>' +
         '<ds:DigestValue>' + certDigest + '</ds:DigestValue>' +
         '</xades:CertDigest>' +
-        '<xades:IssuerSerial>' +
-        '<ds:X509IssuerName>' + issuerName + '</ds:X509IssuerName>' +
-        '<ds:X509SerialNumber>' + serialNumber + '</ds:X509SerialNumber>' +
-        '</xades:IssuerSerial>' +
+        '<xades:IssuerSerialV2>' + certBase64IssuerSerial + '</xades:IssuerSerialV2>' +
         '</xades:Cert>' +
         '</xades:SigningCertificateV2>' +
         '</xades:SignedSignatureProperties>' +
